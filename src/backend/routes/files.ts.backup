@@ -1,0 +1,233 @@
+import { Router } from 'express';
+import { getDatabase } from '../database/init.js';
+import { AuthRequest } from '../middleware/auth.js';
+import {
+  createSSHConnection,
+  closeSSHConnection,
+  executeSFTPCommand,
+  generateSessionId,
+  getSSHSession,
+} from '../services/ssh.js';
+import {
+  createFTPConnection,
+  closeFTPConnection,
+  generateFTPSessionId,
+  getFTPSession,
+  listFTPFiles,
+  downloadFTPFile,
+  uploadFTPFile,
+  deleteFTPFile,
+  renameFTPFile,
+  createFTPDirectory,
+} from '../services/ftp.js';
+
+const router = Router();
+const db = getDatabase();
+
+// Connect to server (SSH or FTP)
+router.post('/connect', async (req, res) => {
+  try {
+    const userId = (req as AuthRequest).userId!;
+    const { connectionId, password: providedPassword } = req.body;
+
+    const connection = db.prepare(
+      'SELECT * FROM connections WHERE id = ? AND user_id = ?'
+    ).get(connectionId, userId) as any;
+
+    if (!connection) {
+      return res.status(404).json({ success: false, error: 'Connection not found' });
+    }
+
+    const sessionId = connection.type === 'ssh' ? generateSessionId() : generateFTPSessionId();
+
+    // Use provided password if available, otherwise use stored password
+    const authPassword = providedPassword || connection.password;
+
+    let result;
+    if (connection.type === 'ssh') {
+      result = await createSSHConnection(sessionId, {
+        connectionId: connection.id,
+        userId,
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        password: authPassword,
+        privateKey: connection.private_key,
+        passphrase: connection.passphrase,
+      });
+    } else {
+      result = await createFTPConnection(sessionId, {
+        connectionId: connection.id,
+        userId,
+        host: connection.host,
+        port: connection.port,
+        user: connection.username,
+        password: authPassword,
+        secure: false,
+      });
+    }
+
+    if (result.success) {
+      res.json({ success: true, data: { sessionId, type: connection.type } });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error: any) {
+    console.error('Connection error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Disconnect session
+router.post('/disconnect', async (req, res) => {
+  try {
+    const { sessionId, type } = req.body;
+
+    if (type === 'ssh') {
+      closeSSHConnection(sessionId);
+    } else {
+      closeFTPConnection(sessionId);
+    }
+
+    res.json({ success: true, message: 'Disconnected' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List files
+router.get('/list', async (req, res) => {
+  try {
+    const { sessionId, path, type } = req.query;
+
+    console.log('📂 List files request:', { sessionId, path, type });
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'Session ID is required' });
+    }
+
+    if (type === 'ssh') {
+      const files = await executeSFTPCommand(sessionId as string, 'list', { path: path || '/' });
+      console.log('✅ Files listed:', files?.length || 0, 'items');
+      res.json({ success: true, data: files });
+    } else {
+      const files = await listFTPFiles(sessionId as string, path as string || '/');
+      console.log('✅ FTP files listed:', files?.length || 0, 'items');
+      res.json({ success: true, data: files });
+    }
+  } catch (error: any) {
+    console.error('❌ List files error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to list files' });
+  }
+});
+
+// Read file
+router.get('/read', async (req, res) => {
+  try {
+    const { sessionId, path, type } = req.query;
+
+    if (type === 'ssh') {
+      const content = await executeSFTPCommand(sessionId as string, 'readFile', { path });
+      res.json({ success: true, data: { content } });
+    } else {
+      const buffer = await downloadFTPFile(sessionId as string, path as string);
+      res.json({ success: true, data: { content: buffer.toString('utf8') } });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Write file
+router.post('/write', async (req, res) => {
+  try {
+    const { sessionId, path, content, type } = req.body;
+    
+    console.log('📝 Write file request:', { sessionId, path, type, contentLength: content?.length });
+
+    if (type === 'ssh') {
+      await executeSFTPCommand(sessionId, 'writeFile', { path, content });
+    } else {
+      await uploadFTPFile(sessionId, path, content);
+    }
+
+    console.log('✅ File saved successfully');
+    res.json({ success: true, message: 'File saved' });
+  } catch (error: any) {
+    console.error('❌ Write file error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete file/directory
+router.delete('/delete', async (req, res) => {
+  try {
+    const { sessionId, path, isDirectory, type } = req.body;
+
+    if (type === 'ssh') {
+      await executeSFTPCommand(sessionId, 'delete', { path, isDirectory });
+    } else {
+      await deleteFTPFile(sessionId, path, isDirectory);
+    }
+
+    res.json({ success: true, message: 'Deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Rename/move file
+router.post('/rename', async (req, res) => {
+  try {
+    const { sessionId, oldPath, newPath, type } = req.body;
+
+    if (type === 'ssh') {
+      await executeSFTPCommand(sessionId, 'rename', { oldPath, newPath });
+    } else {
+      await renameFTPFile(sessionId, oldPath, newPath);
+    }
+
+    res.json({ success: true, message: 'Renamed successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create directory
+router.post('/mkdir', async (req, res) => {
+  try {
+    const { sessionId, path, type } = req.body;
+
+    if (type === 'ssh') {
+      await executeSFTPCommand(sessionId, 'mkdir', { path });
+    } else {
+      await createFTPDirectory(sessionId, path);
+    }
+
+    res.json({ success: true, message: 'Directory created' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Check session status
+router.get('/status', async (req, res) => {
+  try {
+    const { sessionId, type } = req.query;
+
+    let connected = false;
+    if (type === 'ssh') {
+      const session = getSSHSession(sessionId as string);
+      connected = session?.isConnected || false;
+    } else {
+      const session = getFTPSession(sessionId as string);
+      connected = session?.isConnected || false;
+    }
+
+    res.json({ success: true, data: { connected } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;
