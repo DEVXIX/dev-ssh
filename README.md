@@ -1,6 +1,6 @@
 # SSH/FTP Manager
 
-idk what to call this but its a web-based ssh w/ file manager similar to termix. but it's a very old project i've worked on, it's main purpose is to be self hosted.
+idk what to call this but its a web-based ssh w/ file manager similar to termix. but it's a very old project i've worked on, the main purpose of it is to be self hosted.
 
 
 
