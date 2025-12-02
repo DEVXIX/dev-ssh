@@ -36,6 +36,7 @@ export default function WorkspaceLauncher() {
   const [currentPasswordIndex, setCurrentPasswordIndex] = useState(0);
   const [passwords, setPasswords] = useState<Map<number, string>>(new Map());
   const [passwordsReady, setPasswordsReady] = useState(false);
+  const [shouldConnect, setShouldConnect] = useState(false);
   const connectionAttemptedRef = useRef(false);
   const terminalRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const passwordInputRef = useRef<string>('');
@@ -119,20 +120,17 @@ export default function WorkspaceLauncher() {
     };
   }, [workspace, connections]);
 
+  // Trigger connection check after sessions are initialized
+  useEffect(() => {
+    if (sessions.size > 0 && workspace && !connectionAttemptedRef.current) {
+      setShouldConnect(true);
+    }
+  }, [sessions.size, workspace]);
+
   // Connect terminals after they're initialized
   useEffect(() => {
-    console.log('🔄 Connect effect triggered', { 
-      hasSessions: sessions.size > 0, 
-      hasWorkspace: !!workspace, 
-      hasToken: !!token,
-      passwordsReady,
-      connectionAttempted: connectionAttemptedRef.current 
-    });
-    
-    if (sessions.size === 0 || !workspace || !token) return;
-    
-    // Only attempt connection once, or when explicitly needed
-    if (connectionAttemptedRef.current) return;
+    if (!shouldConnect || sessions.size === 0 || !workspace || !token) return;
+    if (connectionAttemptedRef.current && !passwordsReady) return;
 
     const connectPanes = async () => {
       // First, check which connections need passwords
@@ -150,7 +148,8 @@ export default function WorkspaceLauncher() {
       }
       
       // If there are connections needing passwords, show prompt
-      if (connectionsNeedingPasswords.length > 0) {
+      if (connectionsNeedingPasswords.length > 0 && !passwordsReady) {
+        connectionAttemptedRef.current = true;
         setPendingConnections(connectionsNeedingPasswords);
         setCurrentPasswordIndex(0);
         setShowPasswordPrompt(true);
@@ -161,6 +160,7 @@ export default function WorkspaceLauncher() {
 
       // Mark that we're attempting connection
       connectionAttemptedRef.current = true;
+      setShouldConnect(false);
 
       const updates = new Map(sessions);
 
@@ -289,7 +289,7 @@ export default function WorkspaceLauncher() {
     };
 
     connectPanes();
-  }, [sessions, workspace, token, passwordsReady]);
+  }, [shouldConnect, sessions, workspace, token, passwordsReady, passwords]);
 
   // Handle window resize
   useEffect(() => {
@@ -438,8 +438,8 @@ export default function WorkspaceLauncher() {
       passwordInputRef.current = '';
       
       // Reset connection flag and trigger reconnection
-      connectionAttemptedRef.current = false;
       setPasswordsReady(true);
+      setShouldConnect(true);
     }
   };
 
