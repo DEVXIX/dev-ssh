@@ -10,9 +10,61 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card } from '../components/ui/card';
-import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen, Save } from 'lucide-react';
 import { ServerStats } from '../../types';
-import { FileManager, FileEditorProvider } from '../components/file-manager/FileManager';
+import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
+
+// Component to display FileManager with integrated editor
+function FileManagerWithEditor({ sessionId, connectionType }: { sessionId: string; connectionType: 'ssh' | 'ftp' }) {
+  const fileEditor = useFileEditor();
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden h-full">
+      {/* File Manager */}
+      <div className={fileEditor.editingFile ? 'h-1/2 overflow-hidden' : 'flex-1 overflow-hidden'}>
+        <FileManager sessionId={sessionId} connectionType={connectionType} />
+      </div>
+
+      {/* Editor Panel */}
+      {fileEditor.editingFile && (
+        <div className="h-1/2 border-t border-border bg-card flex flex-col overflow-hidden">
+          <div className="border-b border-border bg-muted/30 p-2 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{fileEditor.editingFile.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={fileEditor.saveFile}
+                disabled={fileEditor.isSaving}
+                size="sm"
+                variant="default"
+              >
+                <Save className="h-3.5 w-3.5 mr-1" />
+                {fileEditor.isSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                onClick={fileEditor.closeEditor}
+                size="sm"
+                variant="ghost"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto bg-muted/5">
+            <textarea
+              value={fileEditor.editContent}
+              onChange={(e) => fileEditor.updateContent(e.target.value)}
+              className="w-full h-full p-3 bg-transparent text-foreground font-mono text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/20"
+              spellCheck={false}
+              placeholder="File content..."
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface TerminalSession {
   paneId: string;
@@ -816,20 +868,18 @@ export default function WorkspaceLauncher() {
               </select>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              {activeFileSessionId ? (
-                <FileEditorProvider
-                  sessionId={activeFileSessionId}
-                  connectionType="ssh"
-                >
-                  <FileManager sessionId={activeFileSessionId} connectionType="ssh" />
-                </FileEditorProvider>
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
-                  Select a connected session to browse files
-                </div>
-              )}
-            </div>
+            {activeFileSessionId ? (
+              <FileEditorProvider
+                sessionId={activeFileSessionId}
+                connectionType="ssh"
+              >
+                <FileManagerWithEditor sessionId={activeFileSessionId} connectionType="ssh" />
+              </FileEditorProvider>
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
+                Select a connected session to browse files
+              </div>
+            )}
           </div>
         )}
 
