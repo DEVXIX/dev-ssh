@@ -10,7 +10,9 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card } from '../components/ui/card';
-import { ArrowLeft, X, Lock } from 'lucide-react';
+import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { ServerStats } from '../../types';
+import { FileManager, FileEditorProvider } from '../components/file-manager/FileManager';
 
 interface TerminalSession {
   paneId: string;
@@ -19,6 +21,199 @@ interface TerminalSession {
   fitAddon: FitAddon | null;
   socket: WebSocket | null;
   connection: Connection | null;
+}
+
+// Stats section component for individual pane
+function StatsSection({ paneName, connectionName, sessionId, token }: {
+  paneName: string;
+  connectionName: string;
+  sessionId: string;
+  token: string | null;
+}) {
+  const [stats, setStats] = useState<ServerStats | null>(null);
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    if (!token || !sessionId) return;
+
+    const connectWs = () => {
+      try {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.hostname}:5000/ws/stats?token=${token}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setConnected(true);
+          ws.send(JSON.stringify({
+            type: 'start',
+            data: { sessionId, interval: 5000 },
+          }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'stats') {
+              setStats(message.data);
+            }
+          } catch (err) {
+            console.error('Failed to parse stats:', err);
+          }
+        };
+
+        ws.onerror = () => setConnected(false);
+        ws.onclose = () => {
+          setConnected(false);
+          setTimeout(connectWs, 3000);
+        };
+      } catch (err) {
+        console.error('Failed to create WebSocket:', err);
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'stop' }));
+        }
+        wsRef.current.close();
+      }
+    };
+  }, [sessionId, token]);
+
+  return (
+    <div className="border border-border rounded-lg p-3 bg-card/50">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{paneName}</h3>
+          <p className="text-xs text-muted-foreground">{connectionName}</p>
+        </div>
+        <div className={`w-2 h-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-warning'}`} />
+      </div>
+
+      {stats ? (
+        <div className="space-y-3">
+          {/* CPU */}
+          <Card className="p-3 bg-card/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">CPU</span>
+              <span className="text-sm font-bold">{stats.cpu.usage.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-1.5">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(stats.cpu.usage, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.cpu.cores} cores • Load: {stats.cpu.loadAvg[0]?.toFixed(2)}
+            </p>
+          </Card>
+
+          {/* Memory */}
+          <Card className="p-3 bg-card/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">Memory</span>
+              <span className="text-sm font-bold">{stats.memory.usagePercent.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-1.5">
+              <div
+                className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(stats.memory.usagePercent, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.memory.used >= 1073741824
+                ? `${(stats.memory.used / 1024 / 1024 / 1024).toFixed(1)} GB` 
+                : `${(stats.memory.used / 1024 / 1024).toFixed(0)} MB`} / {stats.memory.total >= 1073741824
+                ? `${(stats.memory.total / 1024 / 1024 / 1024).toFixed(1)} GB` 
+                : `${(stats.memory.total / 1024 / 1024).toFixed(0)} MB`}
+            </p>
+          </Card>
+
+          {/* Disk */}
+          <Card className="p-3 bg-card/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">Disk</span>
+              <span className="text-sm font-bold">{stats.disk.usagePercent.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-1.5">
+              <div
+                className="bg-orange-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(stats.disk.usagePercent, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.disk.used >= 1073741824
+                ? `${(stats.disk.used / 1024 / 1024 / 1024).toFixed(1)} GB` 
+                : `${(stats.disk.used / 1024 / 1024).toFixed(0)} MB`} / {stats.disk.total >= 1073741824
+                ? `${(stats.disk.total / 1024 / 1024 / 1024).toFixed(1)} GB` 
+                : `${(stats.disk.total / 1024 / 1024).toFixed(0)} MB`}
+            </p>
+            <p className="text-xs text-success mt-1">
+              Free: {stats.disk.free >= 1073741824
+                ? `${(stats.disk.free / 1024 / 1024 / 1024).toFixed(1)} GB` 
+                : `${(stats.disk.free / 1024 / 1024).toFixed(0)} MB`}
+            </p>
+          </Card>
+
+          {/* System Info */}
+          <Card className="p-3 bg-card/50">
+            <h3 className="text-xs font-semibold text-foreground mb-2">System</h3>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Host</span>
+                <span className="font-mono">{stats.system.hostname}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">OS</span>
+                <span className="font-mono text-right">{stats.system.os}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Kernel</span>
+                <span className="font-mono text-right">{stats.system.kernel}</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Uptime */}
+          <Card className="p-3 bg-card/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Uptime</span>
+              <span className="text-sm font-semibold">
+                {Math.floor(stats.uptime / 86400)}d {Math.floor((stats.uptime % 86400) / 3600)}h {Math.floor((stats.uptime % 3600) / 60)}m
+              </span>
+            </div>
+          </Card>
+
+          {/* Network Interfaces */}
+          {stats.network && stats.network.length > 0 && (
+            <Card className="p-3 bg-card/50">
+              <h3 className="text-xs font-semibold text-foreground mb-2">Network</h3>
+              <div className="space-y-2">
+                {stats.network.slice(0, 3).map((iface: any, index: number) => (
+                  <div key={index} className="text-xs">
+                    <div className="font-mono font-medium">{iface.name}</div>
+                    <div className="text-muted-foreground ml-2">
+                      {iface.ip}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground text-center py-4">
+          {connected ? 'Loading...' : 'Connecting...'}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function WorkspaceLauncher() {
@@ -40,6 +235,13 @@ export default function WorkspaceLauncher() {
   const connectionAttemptedRef = useRef(false);
   const terminalRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const passwordInputRef = useRef<string>('');
+
+  // Stats panel state
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
+
+  // File Manager panel state
+  const [showFileManager, setShowFileManager] = useState(false);
+  const [activeFileSessionId, setActiveFileSessionId] = useState<string | null>(null);
 
   // Load workspace and connections
   useEffect(() => {
@@ -503,6 +705,24 @@ export default function WorkspaceLauncher() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowStatsPanel(!showStatsPanel)}
+              variant="outline"
+              size="sm"
+            >
+              {showStatsPanel ? <PanelRightClose className="h-3.5 w-3.5 mr-2" /> : <PanelRightOpen className="h-3.5 w-3.5 mr-2" />}
+              {showStatsPanel ? 'Hide' : 'Show'} Stats
+            </Button>
+            <Button
+              onClick={() => setShowFileManager(!showFileManager)}
+              variant="outline"
+              size="sm"
+            >
+              <FolderOpen className="h-3.5 w-3.5 mr-2" />
+              {showFileManager ? 'Hide' : 'Show'} Files
+            </Button>
+          </div>
           <div>
             <h1 className="text-xl font-semibold">{workspace.name}</h1>
             {workspace.description && (
@@ -515,8 +735,10 @@ export default function WorkspaceLauncher() {
         </div>
       </div>
 
-      {/* Terminal Grid */}
-      <div className={`flex-1 grid gap-2 p-2 ${getGridClass()}`}>
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Terminal Grid */}
+        <div className={`flex-1 grid gap-2 p-2 ${getGridClass()}`}>
         {workspace.panes.map((pane, index) => {
           const session = sessions.get(pane.id);
           const connection = connections.find(c => c.id === pane.connectionId);
@@ -560,6 +782,92 @@ export default function WorkspaceLauncher() {
             </div>
           );
         })}
+        </div>
+
+        {/* File Manager Panel */}
+        {showFileManager && (
+          <div className="w-96 border-l border-border overflow-hidden bg-card/30 backdrop-blur-sm flex flex-col">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold text-sm">File Manager</h3>
+              </div>
+            </div>
+
+            {/* Session Selector */}
+            <div className="p-3 border-b border-border">
+              <Label className="text-xs text-muted-foreground mb-2 block">Browse Session</Label>
+              <select
+                className="w-full bg-card border-2 border-border rounded-md px-3 py-2 text-sm text-foreground font-medium hover:border-primary/50 transition-colors cursor-pointer"
+                style={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--foreground))' }}
+                value={activeFileSessionId || ''}
+                onChange={(e) => setActiveFileSessionId(e.target.value || null)}
+              >
+                <option value="" style={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--muted-foreground))' }}>-- Select a session --</option>
+                {workspace.panes.map((pane) => {
+                  const session = sessions.get(pane.id);
+                  if (!session?.sessionId) return null;
+                  return (
+                    <option key={pane.id} value={session.sessionId} style={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--foreground))' }}>
+                      {pane.name} - {session.connection?.name}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              {activeFileSessionId ? (
+                <FileEditorProvider
+                  sessionId={activeFileSessionId}
+                  connectionType="ssh"
+                >
+                  <FileManager sessionId={activeFileSessionId} connectionType="ssh" />
+                </FileEditorProvider>
+              ) : (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
+                  Select a connected session to browse files
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stats Panel */}
+        {showStatsPanel && (
+          <div className="w-96 border-l border-border overflow-y-auto bg-card/30 backdrop-blur-sm">
+            <div className="p-4 space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-primary" />
+                  <h2 className="text-sm font-semibold">Live Server Stats</h2>
+                </div>
+              </div>
+
+              {/* Show all connected sessions */}
+              {workspace.panes.map((pane) => {
+                const session = sessions.get(pane.id);
+                if (!session?.sessionId) return null;
+                
+                return (
+                  <StatsSection 
+                    key={pane.id}
+                    paneName={pane.name}
+                    connectionName={session.connection?.name || ''}
+                    sessionId={session.sessionId}
+                    token={token}
+                  />
+                );
+              })}
+
+              {workspace.panes.every(pane => !sessions.get(pane.id)?.sessionId) && (
+                <div className="text-center text-sm text-muted-foreground py-8 px-4">
+                  Waiting for terminal connections...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
