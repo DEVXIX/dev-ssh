@@ -22,7 +22,7 @@ export default function Connections() {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    type: 'ssh' as 'ssh' | 'ftp',
+    type: 'ssh' as 'ssh' | 'ftp' | 'database',
     host: '',
     port: 22,
     username: '',
@@ -36,6 +36,9 @@ export default function Connections() {
     defaultPath: '/',
     tags: [] as string[],
     folder: '',
+    databaseType: 'mysql' as 'mysql' | 'postgresql' | 'sqlite' | 'mariadb' | 'mssql' | 'oracle',
+    database: '',
+    ssl: false,
   });
 
   useEffect(() => {
@@ -93,6 +96,9 @@ export default function Connections() {
       defaultPath: connection.defaultPath || '/',
       tags: connection.tags || [],
       folder: connection.folder || '',
+      databaseType: connection.databaseType || 'mysql',
+      database: connection.database || '',
+      ssl: connection.ssl || false,
     });
     setShowForm(true);
   };
@@ -127,18 +133,45 @@ export default function Connections() {
       defaultPath: '/',
       tags: [],
       folder: '',
+      databaseType: 'mysql',
+      database: '',
+      ssl: false,
     });
     setEditingConnection(null);
     setError('');
   };
 
-  const handleTypeChange = (type: 'ssh' | 'ftp') => {
+  const handleTypeChange = (type: 'ssh' | 'ftp' | 'database') => {
+    const defaultPorts = {
+      ssh: 22,
+      ftp: 21,
+      database: 3306, // MySQL default
+    };
+
     setFormData({
       ...formData,
       type,
-      port: type === 'ssh' ? 22 : 21,
+      port: defaultPorts[type],
       enableTerminal: type === 'ssh',
       enableTunneling: type === 'ssh',
+      enableFileManager: type !== 'database',
+    });
+  };
+
+  const handleDatabaseTypeChange = (databaseType: 'mysql' | 'postgresql' | 'sqlite' | 'mariadb' | 'mssql' | 'oracle') => {
+    const defaultPorts = {
+      mysql: 3306,
+      mariadb: 3306,
+      postgresql: 5432,
+      sqlite: 0,
+      mssql: 1433,
+      oracle: 1521,
+    };
+
+    setFormData({
+      ...formData,
+      databaseType,
+      port: defaultPorts[databaseType],
     });
   };
 
@@ -157,7 +190,7 @@ export default function Connections() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Connection Manager</h1>
-              <p className="text-sm text-muted-foreground mt-1">Manage your SSH and FTP connections</p>
+              <p className="text-sm text-muted-foreground mt-1">Manage your SSH, FTP, and Database connections</p>
             </div>
             <Button
               onClick={() => {
@@ -252,16 +285,37 @@ export default function Connections() {
 
                       <div className="space-y-2">
                         <Label htmlFor="type">Connection Type</Label>
-                        <Select value={formData.type} onValueChange={(val) => handleTypeChange(val as 'ssh' | 'ftp')}>
+                        <Select value={formData.type} onValueChange={(val) => handleTypeChange(val as 'ssh' | 'ftp' | 'database')}>
                           <SelectTrigger id="type">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="ssh">SSH</SelectItem>
                             <SelectItem value="ftp">FTP</SelectItem>
+                            <SelectItem value="database">Database</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {/* Database Type Selector (only for database connections) */}
+                      {formData.type === 'database' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="databaseType">Database Type</Label>
+                          <Select value={formData.databaseType} onValueChange={(val) => handleDatabaseTypeChange(val as any)}>
+                            <SelectTrigger id="databaseType">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="mysql">MySQL</SelectItem>
+                              <SelectItem value="mariadb">MariaDB</SelectItem>
+                              <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                              <SelectItem value="sqlite">SQLite</SelectItem>
+                              <SelectItem value="mssql">Microsoft SQL Server</SelectItem>
+                              <SelectItem value="oracle">Oracle</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
@@ -358,6 +412,37 @@ export default function Connections() {
                       </div>
                     )}
                   </div>
+
+                  {/* Database-specific fields */}
+                  {formData.type === 'database' && (
+                    <div className="space-y-4 pt-4 border-t border-border">
+                      <h3 className="text-sm font-medium text-foreground">Database Settings</h3>
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="database">Database Name {formData.databaseType !== 'sqlite' && <span className="text-muted-foreground">(Optional)</span>}</Label>
+                          <Input
+                            id="database"
+                            value={formData.database}
+                            onChange={(e) => setFormData({ ...formData, database: e.target.value })}
+                            placeholder={formData.databaseType === 'sqlite' ? 'Path to .db file or :memory:' : 'Database name to connect to'}
+                          />
+                        </div>
+
+                        {formData.databaseType !== 'sqlite' && (
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="ssl"
+                              checked={formData.ssl}
+                              onCheckedChange={(checked) => setFormData({ ...formData, ssl: !!checked })}
+                            />
+                            <Label htmlFor="ssl" className="font-normal cursor-pointer">
+                              Use SSL/TLS Connection
+                            </Label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Features */}
                   <div className="space-y-4 pt-4 border-t border-border">
@@ -526,6 +611,16 @@ export default function Connections() {
                       >
                         <Terminal className="h-3.5 w-3.5" />
                         Open Terminal
+                      </Button>
+                    )}
+                    {connection.type === 'database' && (
+                      <Button
+                        onClick={() => navigate(`/database/${connection.id}`)}
+                        className="w-full gap-2 bg-green-600 hover:bg-green-700"
+                        size="sm"
+                      >
+                        <Server className="h-3.5 w-3.5" />
+                        Open Database
                       </Button>
                     )}
                     <div className="grid grid-cols-2 gap-2">

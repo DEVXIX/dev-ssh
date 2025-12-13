@@ -12,6 +12,7 @@ import fileRoutes from './routes/files.js';
 import tunnelRoutes from './routes/tunnels.js';
 import statsRoutes from './routes/stats.js';
 import workspaceRoutes from './routes/workspaces.js';
+import databaseRoutes from './routes/database.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
@@ -55,6 +56,7 @@ app.use('/api/files', authenticateToken, fileRoutes);
 app.use('/api/tunnels', authenticateToken, tunnelRoutes);
 app.use('/api/stats', authenticateToken, statsRoutes);
 app.use('/api/workspaces', authenticateToken, workspaceRoutes);
+app.use('/api/database', authenticateToken, databaseRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

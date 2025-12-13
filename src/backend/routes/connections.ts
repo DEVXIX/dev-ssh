@@ -37,12 +37,12 @@ function toCamelCase(obj: any): any {
 router.get('/', (req, res) => {
   try {
     const userId = (req as AuthRequest).userId;
-    
+
     const connections = db.prepare(
       'SELECT * FROM connections WHERE user_id = ? ORDER BY created_at DESC'
     ).all(userId);
 
-    res.json({ success: true, data: connections });
+    res.json({ success: true, data: toCamelCase(connections) });
   } catch (error) {
     console.error('Get connections error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch connections' });
@@ -63,7 +63,7 @@ router.get('/:id', (req, res) => {
       return res.status(404).json({ success: false, error: 'Connection not found' });
     }
 
-    res.json({ success: true, data: connection });
+    res.json({ success: true, data: toCamelCase(connection) });
   } catch (error) {
     console.error('Get connection error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch connection' });
@@ -90,9 +90,12 @@ router.post('/', (req, res) => {
       defaultPath,
       tags,
       folder,
+      databaseType,
+      database,
+      ssl,
     } = req.body;
 
-    if (!name || !type || !host || !port || !username) {
+    if (!name || !type || !host || !username) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
 
@@ -101,14 +104,14 @@ router.post('/', (req, res) => {
         user_id, name, type, host, port, username, auth_type,
         password, private_key, passphrase,
         enable_terminal, enable_file_manager, enable_tunneling,
-        default_path, tags, folder
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        default_path, tags, folder, database_type, database, ssl
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       name,
       type,
       host,
-      port,
+      port || (type === 'database' ? 3306 : type === 'ssh' ? 22 : 21),
       username,
       authType || 'password',
       password || null,
@@ -119,12 +122,15 @@ router.post('/', (req, res) => {
       enableTunneling ? 1 : 0,
       defaultPath || '/',
       tags ? JSON.stringify(tags) : null,
-      folder || null
+      folder || null,
+      databaseType || null,
+      database || null,
+      ssl ? 1 : 0
     );
 
     const connection = db.prepare('SELECT * FROM connections WHERE id = ?').get(result.lastInsertRowid);
 
-    res.json({ success: true, data: connection });
+    res.json({ success: true, data: toCamelCase(connection) });
   } catch (error) {
     console.error('Create connection error:', error);
     res.status(500).json({ success: false, error: 'Failed to create connection' });

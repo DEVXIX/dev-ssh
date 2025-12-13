@@ -8,11 +8,14 @@ export interface User {
   createdAt: string;
 }
 
+export type ConnectionType = 'ssh' | 'ftp' | 'database';
+export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'mariadb' | 'mssql' | 'oracle';
+
 export interface Connection {
   id: number;
   userId: number;
   name: string;
-  type: 'ssh' | 'ftp';
+  type: ConnectionType;
   host: string;
   port: number;
   username: string;
@@ -26,6 +29,16 @@ export interface Connection {
   defaultPath?: string;
   tags?: string[];
   folder?: string;
+  // Database-specific fields
+  databaseType?: DatabaseType;
+  database?: string;
+  ssl?: boolean;
+  sslOptions?: {
+    rejectUnauthorized?: boolean;
+    ca?: string;
+    cert?: string;
+    key?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -169,4 +182,50 @@ export interface Workspace {
   panes: WorkspacePane[];
   createdAt: string;
   updatedAt: string;
+}
+
+// Database-specific types
+export interface DatabaseInfo {
+  name: string;
+  size?: number;
+  tables?: number;
+}
+
+export interface TableInfo {
+  name: string;
+  schema?: string;
+  type: 'table' | 'view' | 'system';
+  rows?: number;
+  size?: number;
+  engine?: string;
+  collation?: string;
+  comment?: string;
+}
+
+export interface ColumnInfo {
+  name: string;
+  type: string;
+  nullable: boolean;
+  key?: 'PRI' | 'UNI' | 'MUL' | '';
+  default?: string | null;
+  extra?: string;
+  comment?: string;
+}
+
+export interface QueryResult {
+  columns: string[];
+  rows: any[];
+  rowCount: number;
+  affectedRows?: number;
+  executionTime?: number;
+  error?: string;
+}
+
+export interface DatabaseSession {
+  sessionId: string;
+  connectionId: number;
+  databaseType: DatabaseType;
+  currentDatabase?: string;
+  connected: boolean;
+  lastActive: number;
 }

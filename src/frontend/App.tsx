@@ -9,6 +9,7 @@ import Tunnels from './pages/Tunnels';
 import ServerDetails from './pages/ServerDetails';
 import Workspaces from './pages/Workspaces';
 import WorkspaceLauncher from './pages/WorkspaceLauncher';
+import DatabaseManager from './pages/DatabaseManager';
 import Layout from './components/Layout';
 import { Toaster } from 'sonner';
 
@@ -29,6 +30,7 @@ function App() {
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspace/:workspaceId" element={<WorkspaceLauncher />} />
               <Route path="terminal/:connectionId" element={<Terminal />} />
+              <Route path="database/:connectionId" element={<DatabaseManager />} />
               <Route path="server/:sessionId" element={<ServerDetails />} />
               <Route path="files/:connectionId" element={<FileManager />} />
               <Route path="tunnels/:connectionId" element={<Tunnels />} />

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { migrateDatabase } from './migrate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +15,20 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
+// Check if database exists before creating it
+const dbExists = fs.existsSync(dbPath);
+
+// Run migration first if database exists
+if (dbExists) {
+  console.log('[DATABASE] Existing database found, running migration...');
+  try {
+    migrateDatabase();
+  } catch (error) {
+    console.error('[DATABASE] Migration failed:', error);
+  }
+}
+
+// Create/open database
 const db = new Database(dbPath);
 
 export function initDatabase() {
@@ -39,7 +54,7 @@ export function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('ssh', 'ftp')),
+      type TEXT NOT NULL CHECK(type IN ('ssh', 'ftp', 'database')),
       host TEXT NOT NULL,
       port INTEGER NOT NULL,
       username TEXT NOT NULL,
@@ -53,6 +68,10 @@ export function initDatabase() {
       default_path TEXT DEFAULT '/',
       tags TEXT,
       folder TEXT,
+      database_type TEXT CHECK(database_type IN ('mysql', 'postgresql', 'sqlite', 'mariadb', 'mssql', 'oracle')),
+      database TEXT,
+      ssl INTEGER DEFAULT 0,
+      ssl_options TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

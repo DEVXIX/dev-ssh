@@ -13,6 +13,8 @@ import { Card } from '../components/ui/card';
 import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen, Save } from 'lucide-react';
 import { ServerStats } from '../../types';
 import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
+import { toast } from 'sonner';
+import DatabaseManager from './DatabaseManager';
 
 // Component to display FileManager with integrated editor
 function FileManagerWithEditor({ sessionId, connectionType }: { sessionId: string; connectionType: 'ssh' | 'ftp' }) {
@@ -398,6 +400,7 @@ export default function WorkspaceLauncher() {
             connectionsNeedingPasswords.push(session.connection);
             seenConnectionIds.add(session.connection.id);
           }
+          continue;
         }
       }
       
@@ -411,6 +414,9 @@ export default function WorkspaceLauncher() {
       }
       
       console.log('🔌 Starting connection process for all panes');
+      if (connectionsNeedingPasswords.length > 0) {
+        console.log('🔒 Awaiting passwords for connections:', connectionsNeedingPasswords.map((c) => `${c.name} (${c.host})`));
+      }
 
       // Mark that we're attempting connection
       connectionAttemptedRef.current = true;
@@ -419,20 +425,48 @@ export default function WorkspaceLauncher() {
       const updates = new Map(sessions);
 
       for (const [paneId, session] of sessions.entries()) {
-        if (session.sessionId || !session.terminal || !session.connection) continue;
-
         const pane = workspace.panes.find(p => p.id === paneId);
-        if (!pane) continue;
+        if (!pane) {
+          console.warn(`🟠 Skipping pane ${paneId}: pane not found in workspace definition`);
+          continue;
+        }
+
+        if (session.sessionId) {
+          console.log(`ℹ️ Skipping pane "${pane.name}" (${paneId}): already connected`);
+          continue;
+        }
+
+        if (!session.connection) {
+          console.warn(`🟠 Skipping pane "${pane.name}" (${paneId}): no connection assigned`);
+          toast.error(`${pane.name}: No connection selected for this pane`);
+          continue;
+        }
+
+        if (!session.terminal) {
+          console.warn(`🟠 Skipping pane "${pane.name}" (${paneId}): terminal ref missing`);
+          continue;
+        }
+
+        if (session.connection.type === 'database') {
+          console.log(`ℹ️ Pane "${pane.name}" (${paneId}) is a database connection; skipping terminal connect.`);
+          continue;
+        }
+
+        if (session.connection.type !== 'ssh' && session.connection.type !== 'ftp') {
+          console.warn(`🟠 Skipping pane "${pane.name}" (${paneId}): unsupported connection type ${session.connection.type}`);
+          toast.error(`${pane.name}: Only SSH/FTP supported in workspace terminal`);
+          continue;
+        }
 
         try {
           // Connect to server using filesAPI with password
           const password = passwords.get(session.connection.id) || session.connection.password;
-          console.log(`🔑 Connecting pane "${pane.name}" with connection ID ${session.connection.id}, hasPassword:`, !!password);
+          console.log(`🔑 Connecting pane "${pane.name}" (conn ${session.connection.id}) hasPassword=${!!password}`);
           const response = await filesAPI.connect(session.connection.id, password);
           
           if (!response.data.success || !response.data.data.sessionId) {
-            console.error(`❌ Failed to connect pane "${pane.name}":`, response.data.error);
-            continue;
+            console.error('Connect response payload:', response.data);
+            throw new Error(response.data.error || 'Failed to create session');
           }
 
           const sessionId = response.data.data.sessionId;
@@ -534,8 +568,24 @@ export default function WorkspaceLauncher() {
           });
 
           updates.set(paneId, { ...session, sessionId, socket: ws });
-        } catch (error) {
+        } catch (error: any) {
           console.error(`Failed to connect pane ${pane.name}:`, error);
+          const errMsg = error?.response?.data?.error || error?.message || 'Failed to connect';
+          toast.error(`${pane.name}: ${errMsg}`);
+
+          // Log diagnostic details if available
+          if (error?.response?.data) {
+            console.error('Connect error response:', error.response.data);
+          }
+
+          // If missing password or auth failed, prompt for credentials
+          if (!session.connection.password && !passwords.has(session.connection.id)) {
+            setPendingConnections([session.connection]);
+            setCurrentPasswordIndex(0);
+            setShowPasswordPrompt(true);
+            setPasswordsReady(false);
+            break;
+          }
         }
       }
 
@@ -794,43 +844,57 @@ export default function WorkspaceLauncher() {
         {workspace.panes.map((pane, index) => {
           const session = sessions.get(pane.id);
           const connection = connections.find(c => c.id === pane.connectionId);
+          const isDatabase = connection?.type === 'database';
 
           return (
             <div
               key={pane.id}
-              className="border rounded-lg overflow-hidden flex flex-col bg-background"
+              className={`border rounded-lg overflow-hidden flex flex-col ${isDatabase ? 'bg-dark min-h-0' : 'bg-background'}`}
               style={getPaneStyle(pane, index)}
             >
               {/* Pane Header */}
-              <div className="border-b px-3 py-2 flex items-center justify-between bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium">{pane.name}</div>
-                  {connection && (
-                    <div className="text-xs text-muted-foreground">
+              <div className={`border-b px-3 flex items-center justify-between flex-shrink-0 ${isDatabase ? 'py-1.5 bg-dark-lighter border-dark-border' : 'py-2 bg-muted/50'}`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`font-medium truncate ${isDatabase ? 'text-xs text-gray-200' : 'text-sm'}`}>{pane.name}</div>
+                  {connection && !isDatabase && (
+                    <div className="text-xs text-muted-foreground truncate">
                       {connection.username}@{connection.host}
                     </div>
                   )}
-                  {session?.sessionId && (
-                    <div className="w-2 h-2 rounded-full bg-green-500" title="Connected" />
+                  {session?.sessionId && !isDatabase && (
+                    <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Connected" />
+                  )}
+                  {isDatabase && (
+                    <div className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 flex-shrink-0">DB</div>
                   )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => closePane(pane.id)}
-                  className="h-6 w-6 p-0"
+                  className={`p-0 flex-shrink-0 ${isDatabase ? 'h-5 w-5 text-gray-400 hover:text-white' : 'h-6 w-6'}`}
                 >
-                  <X className="h-4 w-4" />
+                  <X className={isDatabase ? 'h-3 w-3' : 'h-4 w-4'} />
                 </Button>
               </div>
 
-              {/* Terminal */}
-              <div className="flex-1 p-2">
-                <div
-                  ref={(el) => (terminalRefs.current[pane.id] = el)}
-                  className="w-full h-full"
-                />
-              </div>
+              {/* Terminal or DB Content */}
+              {isDatabase ? (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <DatabaseManager
+                    connectionIdOverride={connection?.id}
+                    embedded
+                    onClose={() => closePane(pane.id)}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 p-2">
+                  <div
+                    ref={(el) => (terminalRefs.current[pane.id] = el)}
+                    className="w-full h-full"
+                  />
+                </div>
+              )}
             </div>
           );
         })}

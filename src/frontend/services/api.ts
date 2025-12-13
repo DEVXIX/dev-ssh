@@ -104,3 +104,23 @@ export const workspacesAPI = {
   update: (id: number, data: any) => api.put(`/workspaces/${id}`, data),
   delete: (id: number) => api.delete(`/workspaces/${id}`),
 };
+
+// Database API
+export const databaseAPI = {
+  connect: (connectionId: number, password?: string) =>
+    api.post('/database/connect', { connectionId, password }),
+  disconnect: (sessionId: string) =>
+    api.post(`/database/disconnect/${sessionId}`),
+  listDatabases: (sessionId: string) =>
+    api.get(`/database/databases/${sessionId}`),
+  listTables: (sessionId: string, database?: string) =>
+    api.get(`/database/tables/${sessionId}`, { params: { database } }),
+  getTableColumns: (sessionId: string, tableName: string, database?: string) =>
+    api.get(`/database/columns/${sessionId}/${tableName}`, { params: { database } }),
+  executeQuery: (sessionId: string, query: string, database?: string) =>
+    api.post(`/database/query/${sessionId}`, { query, database }),
+  getTableData: (sessionId: string, tableName: string, database?: string, limit = 100, offset = 0) =>
+    api.get(`/database/table-data/${sessionId}/${tableName}`, {
+      params: { database, limit, offset },
+    }),
+};
