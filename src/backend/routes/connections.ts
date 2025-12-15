@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { getDatabase } from '../database/init.js';
 import { AuthRequest } from '../middleware/auth.js';
+import { encrypt, decrypt } from '../utils/encryption.js';
+import { validateHostname, validatePort, validateConnectionName, sanitizeInput } from '../utils/validation.js';
 
 const router = Router();
 const db = getDatabase();
@@ -40,9 +42,21 @@ router.get('/', (req, res) => {
 
     const connections = db.prepare(
       'SELECT * FROM connections WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId);
+    ).all(userId) as any[];
 
-    res.json({ success: true, data: toCamelCase(connections) });
+    // Decrypt sensitive fields and remove them from response (for security)
+    const sanitizedConnections = connections.map(conn => {
+      const decrypted = { ...conn };
+
+      // Remove sensitive fields from list view (they're not needed)
+      delete decrypted.password;
+      delete decrypted.private_key;
+      delete decrypted.passphrase;
+
+      return decrypted;
+    });
+
+    res.json({ success: true, data: toCamelCase(sanitizedConnections) });
   } catch (error) {
     console.error('Get connections error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch connections' });
@@ -57,13 +71,25 @@ router.get('/:id', (req, res) => {
 
     const connection = db.prepare(
       'SELECT * FROM connections WHERE id = ? AND user_id = ?'
-    ).get(id, userId);
+    ).get(id, userId) as any;
 
     if (!connection) {
       return res.status(404).json({ success: false, error: 'Connection not found' });
     }
 
-    res.json({ success: true, data: toCamelCase(connection) });
+    // Decrypt sensitive fields
+    const decrypted = { ...connection };
+    if (decrypted.password) {
+      decrypted.password = decrypt(decrypted.password);
+    }
+    if (decrypted.private_key) {
+      decrypted.private_key = decrypt(decrypted.private_key);
+    }
+    if (decrypted.passphrase) {
+      decrypted.passphrase = decrypt(decrypted.passphrase);
+    }
+
+    res.json({ success: true, data: toCamelCase(decrypted) });
   } catch (error) {
     console.error('Get connection error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch connection' });
@@ -99,6 +125,29 @@ router.post('/', (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
 
+    // Validate inputs
+    if (!validateConnectionName(name)) {
+      return res.status(400).json({ success: false, error: 'Invalid connection name' });
+    }
+
+    if (!validateHostname(host)) {
+      return res.status(400).json({ success: false, error: 'Invalid hostname or IP address' });
+    }
+
+    const actualPort = port || (type === 'database' ? 3306 : type === 'ssh' ? 22 : 21);
+    if (!validatePort(actualPort)) {
+      return res.status(400).json({ success: false, error: 'Invalid port number' });
+    }
+
+    if (!['ssh', 'ftp', 'database'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'Invalid connection type' });
+    }
+
+    // Encrypt sensitive fields before storing
+    const encryptedPassword = password ? encrypt(password) : null;
+    const encryptedPrivateKey = privateKey ? encrypt(privateKey) : null;
+    const encryptedPassphrase = passphrase ? encrypt(passphrase) : null;
+
     const result = db.prepare(`
       INSERT INTO connections (
         user_id, name, type, host, port, username, auth_type,
@@ -108,29 +157,35 @@ router.post('/', (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
-      name,
+      sanitizeInput(name),
       type,
       host,
-      port || (type === 'database' ? 3306 : type === 'ssh' ? 22 : 21),
-      username,
+      actualPort,
+      sanitizeInput(username),
       authType || 'password',
-      password || null,
-      privateKey || null,
-      passphrase || null,
+      encryptedPassword,
+      encryptedPrivateKey,
+      encryptedPassphrase,
       enableTerminal ? 1 : 0,
       enableFileManager ? 1 : 0,
       enableTunneling ? 1 : 0,
       defaultPath || '/',
       tags ? JSON.stringify(tags) : null,
-      folder || null,
+      folder ? sanitizeInput(folder) : null,
       databaseType || null,
-      database || null,
+      database ? sanitizeInput(database) : null,
       ssl ? 1 : 0
     );
 
-    const connection = db.prepare('SELECT * FROM connections WHERE id = ?').get(result.lastInsertRowid);
+    const connection = db.prepare('SELECT * FROM connections WHERE id = ?').get(result.lastInsertRowid) as any;
 
-    res.json({ success: true, data: toCamelCase(connection) });
+    // Return connection without sensitive data
+    const sanitized = { ...connection };
+    delete sanitized.password;
+    delete sanitized.private_key;
+    delete sanitized.passphrase;
+
+    res.json({ success: true, data: toCamelCase(sanitized) });
   } catch (error) {
     console.error('Create connection error:', error);
     res.status(500).json({ success: false, error: 'Failed to create connection' });
@@ -144,7 +199,7 @@ router.put('/:id', (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    console.log('[CONNECTIONS] Update connection request:', { id, userId, updateData });
+    console.log('[CONNECTIONS] Update connection request:', { id, userId });
 
     const connection = db.prepare(
       'SELECT id FROM connections WHERE id = ? AND user_id = ?'
@@ -154,16 +209,41 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ success: false, error: 'Connection not found' });
     }
 
+    // Validate inputs if provided
+    if (updateData.name && !validateConnectionName(updateData.name)) {
+      return res.status(400).json({ success: false, error: 'Invalid connection name' });
+    }
+    if (updateData.host && !validateHostname(updateData.host)) {
+      return res.status(400).json({ success: false, error: 'Invalid hostname' });
+    }
+    if (updateData.port && !validatePort(updateData.port)) {
+      return res.status(400).json({ success: false, error: 'Invalid port number' });
+    }
+
     const fields: string[] = [];
     const values: any[] = [];
 
     Object.keys(updateData).forEach(key => {
       const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      const value = updateData[key];
+      let value = updateData[key];
 
       // Only update if value is not null/undefined, or explicitly allow null for password fields
       if (value !== undefined) {
         fields.push(`${snakeKey} = ?`);
+
+        // Encrypt sensitive fields
+        if (key === 'password' && value) {
+          value = encrypt(value);
+        } else if (key === 'privateKey' && value) {
+          value = encrypt(value);
+        } else if (key === 'passphrase' && value) {
+          value = encrypt(value);
+        }
+
+        // Sanitize text inputs
+        if (key === 'name' || key === 'username' || key === 'folder' || key === 'database') {
+          value = sanitizeInput(value);
+        }
 
         // Convert value to appropriate type for SQLite
         let sqlValue;
@@ -181,8 +261,6 @@ router.put('/:id', (req, res) => {
       }
     });
 
-    console.log('[CONNECTIONS] Update query:', { fields, values });
-
     if (fields.length === 0) {
       return res.status(400).json({ success: false, error: 'No fields to update' });
     }
@@ -194,14 +272,20 @@ router.put('/:id', (req, res) => {
       `UPDATE connections SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`
     ).run(...values);
 
-    const updated = db.prepare('SELECT * FROM connections WHERE id = ?').get(id);
+    const updated = db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as any;
 
-    res.json({ success: true, data: updated });
+    // Remove sensitive fields from response
+    const sanitized = { ...updated };
+    delete sanitized.password;
+    delete sanitized.private_key;
+    delete sanitized.passphrase;
+
+    res.json({ success: true, data: toCamelCase(sanitized) });
   } catch (error: any) {
     console.error('Update connection error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to update connection'
+      error: 'Failed to update connection'
     });
   }
 });
