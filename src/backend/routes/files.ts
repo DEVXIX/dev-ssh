@@ -20,7 +20,7 @@ import {
   renameFTPFile,
   createFTPDirectory,
 } from '../services/ftp.js';
-import { decrypt } from '../utils/encryption.js';
+import { decrypt, isEncrypted } from '../utils/encryption.js';
 import { validatePath, validateSessionId, validateFileSize } from '../utils/validation.js';
 
 const router = Router();
@@ -48,10 +48,16 @@ router.post('/connect', async (req, res) => {
 
     const sessionId = connection.type === 'ssh' ? generateSessionId() : generateFTPSessionId();
 
-    // Decrypt stored credentials
-    const storedPassword = connection.password ? decrypt(connection.password) : null;
-    const storedPrivateKey = connection.private_key ? decrypt(connection.private_key) : null;
-    const storedPassphrase = connection.passphrase ? decrypt(connection.passphrase) : null;
+    // Decrypt stored credentials (handle both encrypted and plaintext)
+    const storedPassword = connection.password
+      ? (isEncrypted(connection.password) ? decrypt(connection.password) : connection.password)
+      : null;
+    const storedPrivateKey = connection.private_key
+      ? (isEncrypted(connection.private_key) ? decrypt(connection.private_key) : connection.private_key)
+      : null;
+    const storedPassphrase = connection.passphrase
+      ? (isEncrypted(connection.passphrase) ? decrypt(connection.passphrase) : connection.passphrase)
+      : null;
 
     // Fix: Use proper null/undefined checking instead of falsy checking
     // If providedPassword is explicitly provided (even empty string), use it

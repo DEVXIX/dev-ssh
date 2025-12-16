@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDatabase } from '../database/init.js';
 import { AuthRequest } from '../middleware/auth.js';
-import { encrypt, decrypt } from '../utils/encryption.js';
+import { encrypt, decrypt, isEncrypted } from '../utils/encryption.js';
 import { validateHostname, validatePort, validateConnectionName, sanitizeInput } from '../utils/validation.js';
 
 const router = Router();
@@ -77,16 +77,30 @@ router.get('/:id', (req, res) => {
       return res.status(404).json({ success: false, error: 'Connection not found' });
     }
 
-    // Decrypt sensitive fields
+    // Decrypt sensitive fields (handle both encrypted and plaintext for backward compatibility)
     const decrypted = { ...connection };
     if (decrypted.password) {
-      decrypted.password = decrypt(decrypted.password);
+      try {
+        // Try to decrypt - if it fails, it's probably plaintext
+        decrypted.password = isEncrypted(decrypted.password) ? decrypt(decrypted.password) : decrypted.password;
+      } catch (error) {
+        // If decryption fails, keep original (plaintext)
+        console.warn('[CONNECTIONS] Password appears to be plaintext, keeping as-is');
+      }
     }
     if (decrypted.private_key) {
-      decrypted.private_key = decrypt(decrypted.private_key);
+      try {
+        decrypted.private_key = isEncrypted(decrypted.private_key) ? decrypt(decrypted.private_key) : decrypted.private_key;
+      } catch (error) {
+        console.warn('[CONNECTIONS] Private key appears to be plaintext, keeping as-is');
+      }
     }
     if (decrypted.passphrase) {
-      decrypted.passphrase = decrypt(decrypted.passphrase);
+      try {
+        decrypted.passphrase = isEncrypted(decrypted.passphrase) ? decrypt(decrypted.passphrase) : decrypted.passphrase;
+      } catch (error) {
+        console.warn('[CONNECTIONS] Passphrase appears to be plaintext, keeping as-is');
+      }
     }
 
     res.json({ success: true, data: toCamelCase(decrypted) });

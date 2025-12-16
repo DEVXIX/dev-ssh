@@ -7,13 +7,13 @@ idk what to call this but its a web-based server manager with ssh and file manag
 ## Installation
 
 ```bash
-bun i
+bun i or just docker compose up -d
 ```
 
 ## Usage
 
 ```bash
-bun run dev
+bun run dev or use it dockerized.
 ```
 
 and you're ready to go!

@@ -65,7 +65,7 @@ app.use('/api/files', authenticateToken, rateLimiter.apiLimiter(60), fileRoutes)
 app.use('/api/tunnels', authenticateToken, rateLimiter.apiLimiter(30), tunnelRoutes);
 app.use('/api/stats', authenticateToken, rateLimiter.apiLimiter(60), statsRoutes);
 app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(30), workspaceRoutes);
-app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(30), databaseRoutes);
+app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(120), databaseRoutes); // Higher limit for database queries
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {

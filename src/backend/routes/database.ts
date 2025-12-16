@@ -21,7 +21,7 @@ router.post('/connect', async (req: AuthRequest, res) => {
     // Get connection details
     const connection = db
       .prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?')
-      .get(connectionId, userId);
+      .get(connectionId, userId) as any;
 
     if (!connection) {
       return res.status(404).json({

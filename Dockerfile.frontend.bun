@@ -1,0 +1,35 @@
+# Frontend Dockerfile using Bun
+FROM oven/bun:1-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY bun.lockb* ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile || bun install
+
+# Copy source code
+COPY . .
+
+# Build the frontend
+RUN bun run build:frontend
+
+# Production stage - serve with Bun
+FROM oven/bun:1-alpine
+
+WORKDIR /app
+
+# Install a simple static file server
+RUN bun add serve
+
+# Copy built frontend from builder stage
+COPY --from=builder /app/dist/frontend ./dist
+
+# Expose port
+EXPOSE 3000
+
+# Serve the static files
+CMD ["bun", "run", "serve", "-s", "dist", "-l", "3000"]

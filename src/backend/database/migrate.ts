@@ -15,7 +15,7 @@ export function migrateDatabase() {
 
   try {
     // Check if we need to migrate the connections table
-    const tableInfo = db.pragma('table_info(connections)');
+    const tableInfo = db.pragma('table_info(connections)') as any[];
     const hasDatabaseType = tableInfo.some((col: any) => col.name === 'database_type');
 
     if (!hasDatabaseType) {
