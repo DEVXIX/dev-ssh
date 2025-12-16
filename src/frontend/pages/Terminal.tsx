@@ -83,7 +83,9 @@ function TerminalContent({ activeSessionId, onSessionChange }: { activeSessionId
         const conn = response.data.data;
         setConnection(conn);
         
-        const needsPassword = !conn.password && conn.auth_type === 'password';
+        // Check if we need to prompt for password
+        // Use authType (camelCase from backend) and check if password exists
+        const needsPassword = !conn.password && conn.authType === 'password';
         
         if (needsPassword) {
           setShowPasswordPrompt(true);

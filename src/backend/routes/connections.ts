@@ -48,6 +48,11 @@ router.get('/', (req, res) => {
     const sanitizedConnections = connections.map(conn => {
       const decrypted = { ...conn };
 
+      // Add indicators for whether credentials exist (without exposing them)
+      decrypted.hasPassword = !!conn.password;
+      decrypted.hasPrivateKey = !!conn.private_key;
+      decrypted.hasPassphrase = !!conn.passphrase;
+
       // Remove sensitive fields from list view (they're not needed)
       delete decrypted.password;
       delete decrypted.private_key;
@@ -69,6 +74,8 @@ router.get('/:id', (req, res) => {
     const userId = (req as AuthRequest).userId;
     const { id } = req.params;
 
+    console.log('[CONNECTIONS] Get single connection:', { id, userId });
+
     const connection = db.prepare(
       'SELECT * FROM connections WHERE id = ? AND user_id = ?'
     ).get(id, userId) as any;
@@ -77,29 +84,51 @@ router.get('/:id', (req, res) => {
       return res.status(404).json({ success: false, error: 'Connection not found' });
     }
 
+    console.log('[CONNECTIONS] Found connection:', { 
+      id: connection.id, 
+      name: connection.name,
+      hasPassword: !!connection.password,
+      passwordLength: connection.password?.length || 0
+    });
+
     // Decrypt sensitive fields (handle both encrypted and plaintext for backward compatibility)
     const decrypted = { ...connection };
     if (decrypted.password) {
       try {
-        // Try to decrypt - if it fails, it's probably plaintext
-        decrypted.password = isEncrypted(decrypted.password) ? decrypt(decrypted.password) : decrypted.password;
+        // Try to decrypt - if it fails, it's probably plaintext or encrypted with different key
+        if (isEncrypted(decrypted.password)) {
+          console.log('[CONNECTIONS] Password is encrypted, decrypting...');
+          decrypted.password = decrypt(decrypted.password);
+          console.log('[CONNECTIONS] Password decrypted successfully');
+        } else {
+          console.log('[CONNECTIONS] Password is plaintext, keeping as-is');
+        }
+        // If not encrypted format, keep as-is (plaintext)
       } catch (error) {
-        // If decryption fails, keep original (plaintext)
-        console.warn('[CONNECTIONS] Password appears to be plaintext, keeping as-is');
+        // If decryption fails, the data may be corrupted or encrypted with different key
+        // Clear it so user can re-enter
+        console.warn('[CONNECTIONS] Password decryption failed, clearing field:', error);
+        decrypted.password = null;
       }
     }
     if (decrypted.private_key) {
       try {
-        decrypted.private_key = isEncrypted(decrypted.private_key) ? decrypt(decrypted.private_key) : decrypted.private_key;
+        if (isEncrypted(decrypted.private_key)) {
+          decrypted.private_key = decrypt(decrypted.private_key);
+        }
       } catch (error) {
-        console.warn('[CONNECTIONS] Private key appears to be plaintext, keeping as-is');
+        console.warn('[CONNECTIONS] Private key decryption failed, clearing field');
+        decrypted.private_key = null;
       }
     }
     if (decrypted.passphrase) {
       try {
-        decrypted.passphrase = isEncrypted(decrypted.passphrase) ? decrypt(decrypted.passphrase) : decrypted.passphrase;
+        if (isEncrypted(decrypted.passphrase)) {
+          decrypted.passphrase = decrypt(decrypted.passphrase);
+        }
       } catch (error) {
-        console.warn('[CONNECTIONS] Passphrase appears to be plaintext, keeping as-is');
+        console.warn('[CONNECTIONS] Passphrase decryption failed, clearing field');
+        decrypted.passphrase = null;
       }
     }
 

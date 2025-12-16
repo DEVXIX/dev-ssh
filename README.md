@@ -20,7 +20,11 @@ and you're ready to go!
 
 ## Database
 
-This application uses SQLite for local data storage
+This application uses SQLite for local data storage, 
+
+## Env
+
+ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters)
 
 ## Suggestions
 

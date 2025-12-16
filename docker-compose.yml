@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    extra_hosts:
+      # Allow container to reach host machine services (e.g., local databases)
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - PORT=5000

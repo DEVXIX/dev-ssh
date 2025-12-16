@@ -23,6 +23,10 @@ export interface Connection {
   password?: string;
   privateKey?: string;
   passphrase?: string;
+  // Credential existence indicators (from list endpoint, without exposing actual values)
+  hasPassword?: boolean;
+  hasPrivateKey?: boolean;
+  hasPassphrase?: boolean;
   enableTerminal?: boolean;
   enableFileManager?: boolean;
   enableTunneling?: boolean;

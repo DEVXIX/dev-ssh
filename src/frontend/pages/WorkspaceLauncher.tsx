@@ -393,10 +393,27 @@ export default function WorkspaceLauncher() {
       const connectionsNeedingPasswords: Connection[] = [];
       const seenConnectionIds = new Set<number>();
       
+      console.log('🔍 [WorkspaceLauncher] Checking connections for password requirements...');
+      
       for (const [paneId, session] of sessions.entries()) {
         if (session.sessionId || !session.connection) continue;
-        if (!session.connection.password && !passwords.has(session.connection.id)) {
+        // Skip database connections - they don't need SSH password
+        if (session.connection.type === 'database') continue;
+        
+        // Check hasPassword indicator (from list endpoint) or password field (from detail endpoint)
+        const hasStoredPassword = session.connection.hasPassword || !!session.connection.password;
+        
+        console.log(`🔍 [WorkspaceLauncher] Connection "${session.connection.name}" (id=${session.connection.id}):`, {
+          hasPassword: session.connection.hasPassword,
+          passwordField: !!session.connection.password,
+          hasStoredPassword,
+          hasInPasswordsMap: passwords.has(session.connection.id),
+          authType: session.connection.authType
+        });
+        
+        if (!hasStoredPassword && !passwords.has(session.connection.id)) {
           if (!seenConnectionIds.has(session.connection.id)) {
+            console.log(`⚠️ [WorkspaceLauncher] Connection "${session.connection.name}" needs password prompt`);
             connectionsNeedingPasswords.push(session.connection);
             seenConnectionIds.add(session.connection.id);
           }
@@ -406,6 +423,7 @@ export default function WorkspaceLauncher() {
       
       // If there are connections needing passwords, show prompt
       if (connectionsNeedingPasswords.length > 0 && !passwordsReady) {
+        console.log('🔒 [WorkspaceLauncher] Showing password prompt for:', connectionsNeedingPasswords.map(c => c.name));
         connectionAttemptedRef.current = true;
         setPendingConnections(connectionsNeedingPasswords);
         setCurrentPasswordIndex(0);

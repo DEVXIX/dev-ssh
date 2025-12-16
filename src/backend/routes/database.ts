@@ -2,13 +2,14 @@ import express from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { databaseService } from '../services/database.js';
 import db from '../database/init.js';
+import { decrypt, isEncrypted } from '../utils/encryption.js';
 
 const router = express.Router();
 
 // Connect to database
 router.post('/connect', async (req: AuthRequest, res) => {
   try {
-    const { connectionId, password } = req.body;
+    const { connectionId, password: providedPassword } = req.body;
     const userId = req.userId;
 
     if (!connectionId) {
@@ -37,8 +38,30 @@ router.post('/connect', async (req: AuthRequest, res) => {
       });
     }
 
-    // Use provided password or stored password
-    const authPassword = password || connection.password;
+    // Decrypt stored password if it exists and is encrypted
+    let storedPassword = null;
+    if (connection.password) {
+      try {
+        storedPassword = isEncrypted(connection.password) 
+          ? decrypt(connection.password) 
+          : connection.password;
+      } catch (error) {
+        console.warn('[DATABASE] Password decryption failed, clearing field');
+        storedPassword = null;
+      }
+    }
+
+    // Use provided password or decrypted stored password
+    const authPassword = providedPassword !== undefined ? providedPassword : storedPassword;
+
+    console.log('[DATABASE] Connect:', {
+      connectionId,
+      userId,
+      type: connection.database_type,
+      hasStoredPassword: !!storedPassword,
+      hasProvidedPassword: providedPassword !== undefined,
+      willUsePassword: !!authPassword
+    });
 
     const sessionId = await databaseService.connect(
       connection.id,
