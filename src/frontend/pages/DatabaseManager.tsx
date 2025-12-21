@@ -22,6 +22,10 @@ import {
   FileText,
   Eye,
   Edit,
+  Download,
+  FileJson,
+  FileSpreadsheet,
+  FileCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -69,6 +73,10 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
   const [page, setPage] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Context menu state for table export
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const primaryKeyColumns = tableColumns.filter((col) => col.key === 'PRI').map((col) => col.name);
   const primaryKeyColumn = primaryKeyColumns[0];
@@ -374,6 +382,114 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
     }
   };
 
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [contextMenu]);
+
+  const handleTableContextMenu = (e: React.MouseEvent, tableName: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, tableName });
+  };
+
+  const exportTableData = async (tableName: string, format: 'csv' | 'json' | 'sql') => {
+    const ensuredSession = sessionId || (await connectToDatabase(password || connection?.password));
+    if (!ensuredSession) {
+      toast.error('Unable to connect to database');
+      return;
+    }
+
+    try {
+      setExporting(true);
+      setContextMenu(null);
+
+      // Fetch all table data for export (no pagination)
+      const response = await databaseAPI.getTableData(ensuredSession, tableName, selectedDatabase, 10000, 0);
+      if (!response.data.success || response.data.data.error) {
+        toast.error(response.data.data?.error || 'Failed to fetch table data');
+        return;
+      }
+
+      const { columns, rows } = response.data.data;
+      let content = '';
+      let filename = '';
+      let mimeType = '';
+
+      switch (format) {
+        case 'csv': {
+          // CSV export
+          const escapeCSV = (val: any) => {
+            if (val === null || val === undefined) return '';
+            const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          };
+          const header = columns.map(escapeCSV).join(',');
+          const dataRows = rows.map((row: any) => columns.map((col: string) => escapeCSV(row[col])).join(','));
+          content = [header, ...dataRows].join('\n');
+          filename = `${tableName}.csv`;
+          mimeType = 'text/csv';
+          break;
+        }
+        case 'json': {
+          // JSON export
+          content = JSON.stringify(rows, null, 2);
+          filename = `${tableName}.json`;
+          mimeType = 'application/json';
+          break;
+        }
+        case 'sql': {
+          // SQL INSERT statements
+          const dbType = connection?.databaseType;
+          const quote = dbType === 'mysql' || dbType === 'mariadb' ? '`' : '"';
+          const formatSQLValue = (val: any) => {
+            if (val === null || val === undefined) return 'NULL';
+            if (typeof val === 'number') return val.toString();
+            if (typeof val === 'boolean') return val ? '1' : '0';
+            if (typeof val === 'object') {
+              const jsonStr = JSON.stringify(val).replace(/'/g, "''");
+              return `'${jsonStr}'`;
+            }
+            return `'${String(val).replace(/'/g, "''")}'`;
+          };
+          const insertStatements = rows.map((row: any) => {
+            const values = columns.map((col: string) => formatSQLValue(row[col])).join(', ');
+            const cols = columns.map((col: string) => `${quote}${col}${quote}`).join(', ');
+            return `INSERT INTO ${quote}${tableName}${quote} (${cols}) VALUES (${values});`;
+          });
+          content = insertStatements.join('\n');
+          filename = `${tableName}.sql`;
+          mimeType = 'text/plain';
+          break;
+        }
+      }
+
+      // Download file
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${rows.length} rows to ${filename}`);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      toast.error(error.response?.data?.error || 'Failed to export table');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!connection && !connecting) {
     return (
       <div className={`flex items-center justify-center ${embedded ? 'h-full' : 'h-screen'}`}>
@@ -533,12 +649,13 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
                           <button
                             key={table.name}
                             onClick={() => handleTableSelect(table.name)}
+                            onContextMenu={(e) => handleTableContextMenu(e, table.name)}
                             className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors truncate ${embedded ? 'text-[9px]' : 'text-[10px]'} ${
                               selectedTable === table.name
                                 ? 'bg-primary/10 text-primary font-medium'
                                 : 'hover:bg-slate-800/50 text-muted-foreground'
                             }`}
-                            title={table.name}
+                            title={`${table.name} (right-click to export)`}
                           >
                             <Table className={`flex-shrink-0 ${embedded ? 'h-2 w-2' : 'h-2.5 w-2.5'}`} />
                             <span className="truncate">{table.name}</span>
@@ -901,6 +1018,43 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Context Menu for Table Export */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-dark-lighter border border-dark-border rounded-lg shadow-xl py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-2 py-1 text-[10px] text-slate-500 border-b border-dark-border mb-1">
+            Export "{contextMenu.tableName}"
+          </div>
+          <button
+            onClick={() => exportTableData(contextMenu.tableName, 'csv')}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-green-400" />
+            Export as CSV
+          </button>
+          <button
+            onClick={() => exportTableData(contextMenu.tableName, 'json')}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <FileJson className="h-3.5 w-3.5 text-amber-400" />
+            Export as JSON
+          </button>
+          <button
+            onClick={() => exportTableData(contextMenu.tableName, 'sql')}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <FileCode className="h-3.5 w-3.5 text-blue-400" />
+            Export as SQL
+          </button>
         </div>
       )}
     </div>
