@@ -1,7 +1,11 @@
-# SSH/FTP Manager
+# SSH/FTP Manager/ Database Manager
 
-idk what to call this but its a web-based server manager with ssh and file manager, database view/manage capabilities similar to termix. but it's a very old project i've worked on, the main purpose of it is to be self hosted.
+idk what to call this but its a web-based server manager with ssh and file manager, database view/manage/export capabilities similar to termix. but it's a very old project i've worked on, the main purpose of it is to be self hosted.
 
+
+## Database Manager
+
+Right click to view context menu, on tables or database.
 
 
 ## Installation
