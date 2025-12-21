@@ -58,14 +58,14 @@ app.use(session({
 // Initialize database
 initDatabase();
 
-// Routes
+// Routes - Rate limits are per minute (significantly relaxed for development)
 app.use('/api/auth', authRoutes);
-app.use('/api/connections', authenticateToken, rateLimiter.apiLimiter(30), connectionRoutes);
-app.use('/api/files', authenticateToken, rateLimiter.apiLimiter(60), fileRoutes);
-app.use('/api/tunnels', authenticateToken, rateLimiter.apiLimiter(30), tunnelRoutes);
-app.use('/api/stats', authenticateToken, rateLimiter.apiLimiter(60), statsRoutes);
-app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(30), workspaceRoutes);
-app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(120), databaseRoutes); // Higher limit for database queries
+app.use('/api/connections', authenticateToken, rateLimiter.apiLimiter(300), connectionRoutes);
+app.use('/api/files', authenticateToken, rateLimiter.apiLimiter(500), fileRoutes);
+app.use('/api/tunnels', authenticateToken, rateLimiter.apiLimiter(300), tunnelRoutes);
+app.use('/api/stats', authenticateToken, rateLimiter.apiLimiter(500), statsRoutes);
+app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(300), workspaceRoutes);
+app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(1000), databaseRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {

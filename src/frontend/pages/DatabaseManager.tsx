@@ -26,6 +26,7 @@ import {
   FileJson,
   FileSpreadsheet,
   FileCode,
+  HardDriveDownload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -76,7 +77,10 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
 
   // Context menu state for table export
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string } | null>(null);
+  // Context menu state for database export
+  const [dbContextMenu, setDbContextMenu] = useState<{ x: number; y: number; dbName: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<string>('');
 
   const primaryKeyColumns = tableColumns.filter((col) => col.key === 'PRI').map((col) => col.name);
   const primaryKeyColumn = primaryKeyColumns[0];
@@ -384,12 +388,22 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
 
   // Close context menu when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
-    if (contextMenu) {
+    const handleClickOutside = () => {
+      setContextMenu(null);
+      setDbContextMenu(null);
+    };
+    if (contextMenu || dbContextMenu) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [contextMenu]);
+  }, [contextMenu, dbContextMenu]);
+
+  const handleDatabaseContextMenu = (e: React.MouseEvent, dbName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDbContextMenu({ x: e.clientX, y: e.clientY, dbName });
+    setContextMenu(null);
+  };
 
   const handleTableContextMenu = (e: React.MouseEvent, tableName: string) => {
     e.preventDefault();
@@ -487,6 +501,248 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
       toast.error(error.response?.data?.error || 'Failed to export table');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Topological sort for table dependencies
+  const topologicalSort = (tableList: string[], dependencies: Record<string, string[]>): string[] => {
+    const visited = new Set<string>();
+    const result: string[] = [];
+    
+    const visit = (table: string) => {
+      if (visited.has(table)) return;
+      visited.add(table);
+      
+      const deps = dependencies[table] || [];
+      for (const dep of deps) {
+        if (tableList.includes(dep)) {
+          visit(dep);
+        }
+      }
+      result.push(table);
+    };
+    
+    for (const table of tableList) {
+      visit(table);
+    }
+    
+    return result;
+  };
+
+  const exportDatabase = async (dbName: string, options: { includeSchema: boolean; includeData: boolean }) => {
+    const ensuredSession = sessionId || (await connectToDatabase(password || connection?.password));
+    if (!ensuredSession) {
+      toast.error('Unable to connect to database');
+      return;
+    }
+
+    try {
+      setExporting(true);
+      setDbContextMenu(null);
+      setExportProgress('Loading tables...');
+
+      // For PostgreSQL, we need to ensure we're connected to the right database
+      // and then NOT pass the database parameter to avoid reconnection issues
+      let currentSession = ensuredSession;
+      
+      // Switch to the target database if needed
+      if (dbName !== selectedDatabase) {
+        await handleDatabaseSelect(dbName);
+        // After switching, we might need to reconnect for PostgreSQL
+        if (connection?.databaseType === 'postgresql') {
+          // Reconnect to get a fresh session on the correct database
+          const reconnectResponse = await databaseAPI.connect(Number(resolvedConnectionId), password || undefined);
+          if (reconnectResponse.data.success) {
+            currentSession = reconnectResponse.data.data.sessionId;
+            setSessionId(currentSession);
+          }
+        }
+      }
+
+      // Get list of tables - don't pass database for PostgreSQL since we're already connected to it
+      const skipDbParam = connection?.databaseType === 'postgresql';
+      const tablesResponse = await databaseAPI.listTables(currentSession, skipDbParam ? undefined : dbName);
+      if (!tablesResponse.data.success) {
+        toast.error('Failed to get tables list');
+        return;
+      }
+
+      const allTables = tablesResponse.data.data
+        .filter((t: TableInfo) => t.type === 'table')
+        .map((t: TableInfo) => t.name);
+
+      if (allTables.length === 0) {
+        toast.error('No tables found in database');
+        return;
+      }
+
+      // Try to get migration order first
+      setExportProgress('Checking migration order...');
+      let tableOrder = [...allTables];
+      
+      const migrationResponse = await databaseAPI.getMigrationOrder(currentSession, skipDbParam ? undefined : dbName);
+      if (migrationResponse.data.success && migrationResponse.data.data) {
+        const migrationOrder = migrationResponse.data.data as string[];
+        // Reorder tables based on migration order
+        const orderedTables: string[] = [];
+        for (const migTable of migrationOrder) {
+          const match = allTables.find((t: string) => 
+            t.toLowerCase() === migTable.toLowerCase() ||
+            t.toLowerCase().includes(migTable.toLowerCase())
+          );
+          if (match && !orderedTables.includes(match)) {
+            orderedTables.push(match);
+          }
+        }
+        // Add remaining tables
+        for (const table of allTables) {
+          if (!orderedTables.includes(table)) {
+            orderedTables.push(table);
+          }
+        }
+        tableOrder = orderedTables;
+      } else {
+        // Fallback to dependency-based ordering
+        setExportProgress('Analyzing dependencies...');
+        const depsResponse = await databaseAPI.getTableDependencies(currentSession, skipDbParam ? undefined : dbName);
+        if (depsResponse.data.success) {
+          tableOrder = topologicalSort(allTables, depsResponse.data.data);
+        }
+      }
+
+      const dbType = connection?.databaseType;
+      const quote = dbType === 'mysql' || dbType === 'mariadb' ? '`' : '"';
+      const parts: string[] = [];
+
+      // Add header comment
+      parts.push(`-- Database Export: ${dbName}`);
+      parts.push(`-- Generated: ${new Date().toISOString()}`);
+      parts.push(`-- Database Type: ${dbType?.toUpperCase()}`);
+      parts.push(`-- Tables: ${tableOrder.length}`);
+      parts.push('');
+
+      if (options.includeSchema) {
+        // Disable foreign key checks at the start
+        if (dbType === 'mysql' || dbType === 'mariadb') {
+          parts.push('SET FOREIGN_KEY_CHECKS = 0;');
+          parts.push('');
+        } else if (dbType === 'postgresql') {
+          parts.push('SET session_replication_role = replica;');
+          parts.push('');
+        }
+
+        parts.push('-- =====================');
+        parts.push('-- TABLE SCHEMAS');
+        parts.push('-- =====================');
+        parts.push('');
+
+        // Export schemas in order
+        for (let i = 0; i < tableOrder.length; i++) {
+          const table = tableOrder[i];
+          setExportProgress(`Exporting schema: ${table} (${i + 1}/${tableOrder.length})`);
+          
+          try {
+            const schemaResponse = await databaseAPI.getTableSchema(currentSession, table, skipDbParam ? undefined : dbName);
+            if (schemaResponse.data.success && schemaResponse.data.data) {
+              // Add DROP TABLE IF EXISTS
+              parts.push(`-- Table: ${table}`);
+              parts.push(`DROP TABLE IF EXISTS ${quote}${table}${quote} CASCADE;`);
+              parts.push(schemaResponse.data.data);
+              parts.push('');
+            }
+          } catch (err: any) {
+            console.error(`Failed to get schema for ${table}:`, err);
+            parts.push(`-- Failed to export schema for ${table}: ${err.message || 'Unknown error'}`);
+            parts.push('');
+          }
+        }
+      }
+
+      if (options.includeData) {
+        parts.push('-- =====================');
+        parts.push('-- TABLE DATA');
+        parts.push('-- =====================');
+        parts.push('');
+
+        const formatSQLValue = (val: any) => {
+          if (val === null || val === undefined) return 'NULL';
+          if (typeof val === 'number') return val.toString();
+          if (typeof val === 'boolean') return val ? '1' : '0';
+          if (typeof val === 'object') {
+            const jsonStr = JSON.stringify(val).replace(/'/g, "''");
+            return `'${jsonStr}'`;
+          }
+          return `'${String(val).replace(/'/g, "''")}'`;
+        };
+
+        // Export data in order
+        for (let i = 0; i < tableOrder.length; i++) {
+          const table = tableOrder[i];
+          setExportProgress(`Exporting data: ${table} (${i + 1}/${tableOrder.length})`);
+          
+          try {
+            // Fetch all data (up to 100k rows per table)
+            const dataResponse = await databaseAPI.getTableData(currentSession, table, skipDbParam ? undefined : dbName, 100000, 0);
+            if (dataResponse.data.success && !dataResponse.data.data.error) {
+              const { columns, rows } = dataResponse.data.data;
+              
+              if (rows.length > 0) {
+                parts.push(`-- Data for table: ${table} (${rows.length} rows)`);
+                
+                const insertStatements = rows.map((row: any) => {
+                  const values = columns.map((col: string) => formatSQLValue(row[col])).join(', ');
+                  const cols = columns.map((col: string) => `${quote}${col}${quote}`).join(', ');
+                  return `INSERT INTO ${quote}${table}${quote} (${cols}) VALUES (${values});`;
+                });
+                
+                parts.push(insertStatements.join('\n'));
+                parts.push('');
+              } else {
+                parts.push(`-- Table ${table} is empty`);
+                parts.push('');
+              }
+            } else if (dataResponse.data.data?.error) {
+              parts.push(`-- Failed to export data for ${table}: ${dataResponse.data.data.error}`);
+              parts.push('');
+            }
+          } catch (err: any) {
+            console.error(`Failed to get data for ${table}:`, err);
+            parts.push(`-- Failed to export data for ${table}: ${err.message || 'Unknown error'}`);
+            parts.push('');
+          }
+        }
+      }
+
+      if (options.includeSchema) {
+        // Re-enable foreign key checks at the end
+        if (dbType === 'mysql' || dbType === 'mariadb') {
+          parts.push('SET FOREIGN_KEY_CHECKS = 1;');
+        } else if (dbType === 'postgresql') {
+          parts.push('SET session_replication_role = DEFAULT;');
+        }
+      }
+
+      const content = parts.join('\n');
+      const filename = `${dbName}_${options.includeSchema && options.includeData ? 'full' : options.includeSchema ? 'schema' : 'data'}_export.sql`;
+
+      // Download file
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${tableOrder.length} tables to ${filename}`);
+    } catch (error: any) {
+      console.error('Database export error:', error);
+      toast.error(error.response?.data?.error || 'Failed to export database');
+    } finally {
+      setExporting(false);
+      setExportProgress('');
     }
   };
 
@@ -632,11 +888,13 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
                   <div key={db.name} className="mb-0.5">
                     <button
                       onClick={() => handleDatabaseSelect(db.name)}
+                      onContextMenu={(e) => handleDatabaseContextMenu(e, db.name)}
                       className={`w-full flex items-center gap-1 px-1.5 py-1 rounded transition-colors truncate ${embedded ? 'text-[10px]' : 'text-[11px]'} ${
                         selectedDatabase === db.name
                           ? 'bg-slate-800 text-blue-400 font-medium'
                           : 'hover:bg-slate-800 text-slate-300'
                       }`}
+                      title={`${db.name} (right-click to export)`}
                     >
                       <Database className={`flex-shrink-0 ${embedded ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
                       <span className="truncate">{db.name}</span>
@@ -1055,6 +1313,49 @@ export default function DatabaseManager({ connectionIdOverride, embedded = false
             <FileCode className="h-3.5 w-3.5 text-blue-400" />
             Export as SQL
           </button>
+        </div>
+      )}
+
+      {/* Context Menu for Database Export */}
+      {dbContextMenu && (
+        <div
+          className="fixed z-50 bg-dark-lighter border border-dark-border rounded-lg shadow-xl py-1 min-w-[180px]"
+          style={{ left: dbContextMenu.x, top: dbContextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-2 py-1 text-[10px] text-slate-500 border-b border-dark-border mb-1">
+            Export Database "{dbContextMenu.dbName}"
+          </div>
+          <button
+            onClick={() => exportDatabase(dbContextMenu.dbName, { includeSchema: true, includeData: true })}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <HardDriveDownload className="h-3.5 w-3.5 text-purple-400" />
+            Full Export (Schema + Data)
+          </button>
+          <button
+            onClick={() => exportDatabase(dbContextMenu.dbName, { includeSchema: true, includeData: false })}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <FileCode className="h-3.5 w-3.5 text-blue-400" />
+            Schema Only
+          </button>
+          <button
+            onClick={() => exportDatabase(dbContextMenu.dbName, { includeSchema: false, includeData: true })}
+            disabled={exporting}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50"
+          >
+            <Table className="h-3.5 w-3.5 text-green-400" />
+            Data Only
+          </button>
+          {exporting && exportProgress && (
+            <div className="px-3 py-2 text-[10px] text-slate-400 border-t border-dark-border mt-1 flex items-center gap-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span className="truncate">{exportProgress}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

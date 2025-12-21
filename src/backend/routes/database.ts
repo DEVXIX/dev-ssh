@@ -231,4 +231,83 @@ router.get('/table-data/:sessionId/:tableName', async (req, res) => {
   }
 });
 
+// Get table schema (CREATE TABLE statement)
+router.get('/schema/:sessionId/:tableName', async (req, res) => {
+  try {
+    const { sessionId, tableName } = req.params;
+    const { database } = req.query;
+
+    const schema = await databaseService.getTableSchema(
+      sessionId,
+      tableName,
+      database as string | undefined
+    );
+
+    res.json({
+      success: true,
+      data: schema,
+    });
+  } catch (error: any) {
+    console.error('Get schema error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get table schema',
+    });
+  }
+});
+
+// Get migration order
+router.get('/migrations/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { database } = req.query;
+
+    const order = await databaseService.getMigrationOrder(
+      sessionId,
+      database as string | undefined
+    );
+
+    res.json({
+      success: true,
+      data: order,
+    });
+  } catch (error: any) {
+    console.error('Get migrations error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get migration order',
+    });
+  }
+});
+
+// Get table dependencies (foreign keys)
+router.get('/dependencies/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { database } = req.query;
+
+    const dependencies = await databaseService.getTableDependencies(
+      sessionId,
+      database as string | undefined
+    );
+
+    // Convert Map to object for JSON response
+    const depsObject: Record<string, string[]> = {};
+    dependencies.forEach((deps, table) => {
+      depsObject[table] = deps;
+    });
+
+    res.json({
+      success: true,
+      data: depsObject,
+    });
+  } catch (error: any) {
+    console.error('Get dependencies error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get table dependencies',
+    });
+  }
+});
+
 export default router;

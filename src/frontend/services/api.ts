@@ -123,4 +123,10 @@ export const databaseAPI = {
     api.get(`/database/table-data/${sessionId}/${tableName}`, {
       params: { database, limit, offset },
     }),
+  getTableSchema: (sessionId: string, tableName: string, database?: string) =>
+    api.get(`/database/schema/${sessionId}/${tableName}`, { params: { database } }),
+  getMigrationOrder: (sessionId: string, database?: string) =>
+    api.get(`/database/migrations/${sessionId}`, { params: { database } }),
+  getTableDependencies: (sessionId: string, database?: string) =>
+    api.get(`/database/dependencies/${sessionId}`, { params: { database } }),
 };

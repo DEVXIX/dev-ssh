@@ -492,6 +492,11 @@ class DatabaseService {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
+    // Skip if already on the correct database
+    if (session.currentDatabase === database) {
+      return;
+    }
+
     try {
       switch (session.type) {
         case 'mysql':
@@ -499,7 +504,13 @@ class DatabaseService {
           await session.client.query(`USE \`${database}\``);
           break;
         case 'postgresql': {
-          await session.client.end();
+          // For PostgreSQL, we need to disconnect and reconnect to a different database
+          try {
+            await session.client.end();
+          } catch (e) {
+            // Client might already be disconnected
+            console.warn('PostgreSQL client already disconnected');
+          }
           const newClient = await this.connectPostgreSQL({
             ...session.connectionConfig,
             database,
@@ -528,7 +539,9 @@ class DatabaseService {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
 
-    // Switch database if needed
+    session.lastActive = Date.now();
+
+    // Switch database if needed (and if database is specified)
     if (database && database !== session.currentDatabase) {
       await this.useDatabase(sessionId, database);
     }
@@ -552,11 +565,288 @@ class DatabaseService {
         throw new Error('Unsupported database type');
     }
 
-    return this.executeQuery(sessionId, query, database);
+    // Don't pass database again to executeQuery to avoid double-switching
+    return this.executeQuery(sessionId, query);
   }
 
   getSession(sessionId: string): DatabaseConnection | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  async getTableSchema(sessionId: string, tableName: string, database?: string): Promise<string> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    session.lastActive = Date.now();
+
+    if (database && database !== session.currentDatabase) {
+      await this.useDatabase(sessionId, database);
+    }
+
+    try {
+      switch (session.type) {
+        case 'mysql':
+        case 'mariadb':
+          return await this.getTableSchemaMySQL(session.client, tableName);
+        case 'postgresql':
+          return await this.getTableSchemaPostgreSQL(session.client, tableName);
+        case 'sqlite':
+          return await this.getTableSchemaSQLite(session.client, tableName);
+        default:
+          throw new Error('Unsupported database type');
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to get table schema: ${error.message}`);
+    }
+  }
+
+  private async getTableSchemaMySQL(client: any, tableName: string): Promise<string> {
+    const [rows] = await client.query(`SHOW CREATE TABLE \`${tableName}\``);
+    return rows[0]?.['Create Table'] || '';
+  }
+
+  private async getTableSchemaPostgreSQL(client: any, tableName: string): Promise<string> {
+    // Get columns
+    const columnsResult = await client.query(`
+      SELECT 
+        c.column_name,
+        c.data_type,
+        c.character_maximum_length,
+        c.numeric_precision,
+        c.numeric_scale,
+        c.is_nullable,
+        c.column_default,
+        c.udt_name
+      FROM information_schema.columns c
+      WHERE c.table_name = $1 AND c.table_schema = 'public'
+      ORDER BY c.ordinal_position
+    `, [tableName]);
+
+    // Get primary key
+    const pkResult = await client.query(`
+      SELECT kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu 
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.table_name = $1 
+        AND tc.table_schema = 'public'
+        AND tc.constraint_type = 'PRIMARY KEY'
+      ORDER BY kcu.ordinal_position
+    `, [tableName]);
+
+    // Get foreign keys
+    const fkResult = await client.query(`
+      SELECT
+        kcu.column_name,
+        ccu.table_name AS foreign_table_name,
+        ccu.column_name AS foreign_column_name,
+        tc.constraint_name
+      FROM information_schema.table_constraints AS tc
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY' 
+        AND tc.table_name = $1
+        AND tc.table_schema = 'public'
+    `, [tableName]);
+
+    const pkColumns = pkResult.rows.map((r: any) => r.column_name);
+    const fkMap = new Map<string, { table: string; column: string; name: string }>();
+    fkResult.rows.forEach((r: any) => {
+      fkMap.set(r.column_name, { 
+        table: r.foreign_table_name, 
+        column: r.foreign_column_name,
+        name: r.constraint_name 
+      });
+    });
+
+    // Build CREATE TABLE statement
+    const columnDefs = columnsResult.rows.map((col: any) => {
+      let typeDef = col.udt_name.toUpperCase();
+      if (col.character_maximum_length) {
+        typeDef = `VARCHAR(${col.character_maximum_length})`;
+      } else if (col.udt_name === 'int4') {
+        typeDef = 'INTEGER';
+      } else if (col.udt_name === 'int8') {
+        typeDef = 'BIGINT';
+      } else if (col.udt_name === 'bool') {
+        typeDef = 'BOOLEAN';
+      } else if (col.udt_name === 'float8') {
+        typeDef = 'DOUBLE PRECISION';
+      } else if (col.udt_name === 'timestamptz') {
+        typeDef = 'TIMESTAMP WITH TIME ZONE';
+      } else if (col.udt_name === 'timestamp') {
+        typeDef = 'TIMESTAMP';
+      }
+
+      let def = `  "${col.column_name}" ${typeDef}`;
+      if (col.is_nullable === 'NO') def += ' NOT NULL';
+      if (col.column_default) {
+        // Handle serial/identity columns
+        if (col.column_default.startsWith('nextval(')) {
+          def = `  "${col.column_name}" SERIAL`;
+          if (col.is_nullable === 'NO') def += ' NOT NULL';
+        } else {
+          def += ` DEFAULT ${col.column_default}`;
+        }
+      }
+      return def;
+    });
+
+    // Add primary key constraint
+    if (pkColumns.length > 0) {
+      columnDefs.push(`  PRIMARY KEY (${pkColumns.map((c: string) => `"${c}"`).join(', ')})`);
+    }
+
+    // Add foreign key constraints
+    const addedFks = new Set<string>();
+    fkMap.forEach((fk, colName) => {
+      if (!addedFks.has(fk.name)) {
+        columnDefs.push(`  CONSTRAINT "${fk.name}" FOREIGN KEY ("${colName}") REFERENCES "${fk.table}" ("${fk.column}")`);
+        addedFks.add(fk.name);
+      }
+    });
+
+    return `CREATE TABLE "${tableName}" (\n${columnDefs.join(',\n')}\n);`;
+  }
+
+  private async getTableSchemaSQLite(client: any, tableName: string): Promise<string> {
+    const result = await client.get(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name=?`,
+      [tableName]
+    );
+    return result?.sql || '';
+  }
+
+  async getMigrationOrder(sessionId: string, database?: string): Promise<string[] | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    if (database && database !== session.currentDatabase) {
+      await this.useDatabase(sessionId, database);
+    }
+
+    try {
+      // Try common migration table names
+      const migrationTables = ['migrations', '_migrations', 'schema_migrations', 'knex_migrations', 'drizzle_migrations', 'prisma_migrations', '_prisma_migrations'];
+      
+      for (const migTable of migrationTables) {
+        try {
+          const result = await this.executeQuery(sessionId, 
+            session.type === 'mysql' || session.type === 'mariadb'
+              ? `SELECT * FROM \`${migTable}\` ORDER BY id ASC`
+              : `SELECT * FROM "${migTable}" ORDER BY id ASC`,
+            database
+          );
+          
+          if (result.rows.length > 0) {
+            // Try to extract table names from migration names/filenames
+            const tableOrder: string[] = [];
+            for (const row of result.rows) {
+              // Common migration columns: name, migration, filename
+              const migrationName = row.name || row.migration || row.filename || row.migration_name || '';
+              // Extract potential table name from migration (e.g., "create_users_table" -> "users")
+              const match = migrationName.match(/create_(\w+)_table|create_(\w+)|(\w+)_migration/i);
+              if (match) {
+                const tableName = match[1] || match[2] || match[3];
+                if (tableName && !tableOrder.includes(tableName)) {
+                  tableOrder.push(tableName);
+                }
+              }
+            }
+            if (tableOrder.length > 0) {
+              return tableOrder;
+            }
+          }
+        } catch {
+          // Table doesn't exist, try next
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getTableDependencies(sessionId: string, database?: string): Promise<Map<string, string[]>> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    if (database && database !== session.currentDatabase) {
+      await this.useDatabase(sessionId, database);
+    }
+
+    const dependencies = new Map<string, string[]>();
+
+    try {
+      switch (session.type) {
+        case 'mysql':
+        case 'mariadb': {
+          const [rows] = await session.client.query(`
+            SELECT 
+              TABLE_NAME as table_name,
+              REFERENCED_TABLE_NAME as referenced_table
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE REFERENCED_TABLE_NAME IS NOT NULL
+              AND TABLE_SCHEMA = DATABASE()
+          `);
+          for (const row of rows) {
+            const deps = dependencies.get(row.table_name) || [];
+            if (!deps.includes(row.referenced_table)) {
+              deps.push(row.referenced_table);
+            }
+            dependencies.set(row.table_name, deps);
+          }
+          break;
+        }
+        case 'postgresql': {
+          const result = await session.client.query(`
+            SELECT
+              tc.table_name,
+              ccu.table_name AS referenced_table
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+              AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_schema = 'public'
+          `);
+          for (const row of result.rows) {
+            const deps = dependencies.get(row.table_name) || [];
+            if (!deps.includes(row.referenced_table)) {
+              deps.push(row.referenced_table);
+            }
+            dependencies.set(row.table_name, deps);
+          }
+          break;
+        }
+        case 'sqlite': {
+          // Get all tables first
+          const tables = await this.listTablesSQLite(session.client);
+          for (const table of tables) {
+            const fkResult = await session.client.all(`PRAGMA foreign_key_list("${table.name}")`);
+            const deps: string[] = [];
+            for (const fk of fkResult) {
+              if (fk.table && !deps.includes(fk.table)) {
+                deps.push(fk.table);
+              }
+            }
+            if (deps.length > 0) {
+              dependencies.set(table.name, deps);
+            }
+          }
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error getting table dependencies:', error);
+    }
+
+    return dependencies;
   }
 
   cleanup(): void {

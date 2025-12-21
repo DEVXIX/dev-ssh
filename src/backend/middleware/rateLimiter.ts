@@ -33,20 +33,20 @@ class RateLimiter {
       this.attempts.delete(identifier);
     }
 
-    // Rate limit: 5 attempts per 15 minutes
+    // Rate limit: 20 attempts per 15 minutes (relaxed for development)
     const record = this.attempts.get(identifier);
     const windowMs = 15 * 60 * 1000; // 15 minutes
-    const maxAttempts = 5;
+    const maxAttempts = 20;
 
     if (record && now < record.resetTime) {
       if (record.count >= maxAttempts) {
-        // Lock out for 30 minutes after 5 failed attempts
-        const lockoutDuration = 30 * 60 * 1000;
+        // Lock out for 5 minutes after max failed attempts (reduced from 30)
+        const lockoutDuration = 5 * 60 * 1000;
         this.lockouts.set(identifier, now + lockoutDuration);
 
         return res.status(429).json({
           success: false,
-          error: 'Too many login attempts. Account locked for 30 minutes.',
+          error: 'Too many login attempts. Account locked for 5 minutes.',
         });
       }
     } else {
