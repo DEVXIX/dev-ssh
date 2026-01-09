@@ -70,3 +70,26 @@
 .xterm-viewport {
   overflow-y: auto !important;
 }
+
+/* Storage thumbnail gallery scrollbar */
+.storage-thumbnail-gallery {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(220 70% 65%) hsl(0 0% 10%);
+}
+
+.storage-thumbnail-gallery::-webkit-scrollbar {
+  height: 6px;
+}
+
+.storage-thumbnail-gallery::-webkit-scrollbar-track {
+  background: hsl(0 0% 10%);
+}
+
+.storage-thumbnail-gallery::-webkit-scrollbar-thumb {
+  background: hsl(220 70% 65%);
+  border-radius: 3px;
+}
+
+.storage-thumbnail-gallery::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 70% 75%);
+}

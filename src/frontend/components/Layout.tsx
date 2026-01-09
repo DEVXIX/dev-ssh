@@ -10,7 +10,8 @@ import {
   User,
   FolderOpen,
   Cable,
-  LayoutGrid
+  LayoutGrid,
+  HardDrive
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -28,8 +29,8 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Home },
     { name: 'Connections', path: '/connections', icon: Server },
+    { name: 'Storage', path: '/storage', icon: HardDrive },
     { name: 'Workspaces', path: '/workspaces', icon: LayoutGrid },
-    
   ];
 
   const isActive = (path: string) => {

@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { workspacesAPI, connectionsAPI, filesAPI } from '../services/api';
+import { workspacesAPI, connectionsAPI, filesAPI, storageAPI } from '../services/api';
 import { useAuthStore } from '../store/authStore';
-import type { Workspace, WorkspacePane, Connection } from '../../types';
+import type { Workspace, WorkspacePane, Connection, StorageConnection } from '../../types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -15,6 +15,7 @@ import { ServerStats } from '../../types';
 import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
 import { toast } from 'sonner';
 import DatabaseManager from './DatabaseManager';
+import Storage from './Storage';
 
 // Component to display FileManager with integrated editor
 function FileManagerWithEditor({ sessionId, connectionType }: { sessionId: string; connectionType: 'ssh' | 'ftp' }) {
@@ -276,6 +277,7 @@ export default function WorkspaceLauncher() {
   const { token } = useAuthStore();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [storageConnections, setStorageConnections] = useState<StorageConnection[]>([]);
   const [sessions, setSessions] = useState<Map<string, TerminalSession>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -301,9 +303,10 @@ export default function WorkspaceLauncher() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [wsRes, connRes] = await Promise.all([
+        const [wsRes, connRes, storageRes] = await Promise.all([
           workspacesAPI.getOne(Number(workspaceId)),
           connectionsAPI.getAll(),
+          storageAPI.getAllConnections(),
         ]);
 
         if (wsRes.data.success && wsRes.data.data) {
@@ -314,6 +317,10 @@ export default function WorkspaceLauncher() {
 
         if (connRes.data.success && connRes.data.data) {
           setConnections(connRes.data.data);
+        }
+
+        if (storageRes.data.success && storageRes.data.data) {
+          setStorageConnections(storageRes.data.data);
         }
       } catch (err: any) {
         console.error('Failed to load workspace:', err);
@@ -862,47 +869,64 @@ export default function WorkspaceLauncher() {
         {workspace.panes.map((pane, index) => {
           const session = sessions.get(pane.id);
           const connection = connections.find(c => c.id === pane.connectionId);
-          const isDatabase = connection?.type === 'database';
+          const storageConnection = storageConnections.find(c => c.id === pane.storageConnectionId);
+          const isDatabase = pane.paneType === 'database' || connection?.type === 'database';
+          const isStorage = pane.paneType === 'storage';
 
           return (
             <div
               key={pane.id}
-              className={`border rounded-lg overflow-hidden flex flex-col ${isDatabase ? 'bg-dark min-h-0' : 'bg-background'}`}
+              className={`border rounded-lg overflow-hidden flex flex-col ${isDatabase || isStorage ? 'bg-dark min-h-0' : 'bg-background'}`}
               style={getPaneStyle(pane, index)}
             >
               {/* Pane Header */}
-              <div className={`border-b px-3 flex items-center justify-between flex-shrink-0 ${isDatabase ? 'py-1.5 bg-dark-lighter border-dark-border' : 'py-2 bg-muted/50'}`}>
+              <div className={`border-b px-3 flex items-center justify-between flex-shrink-0 ${isDatabase || isStorage ? 'py-1.5 bg-dark-lighter border-dark-border' : 'py-2 bg-muted/50'}`}>
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className={`font-medium truncate ${isDatabase ? 'text-xs text-gray-200' : 'text-sm'}`}>{pane.name}</div>
-                  {connection && !isDatabase && (
+                  <div className={`font-medium truncate ${isDatabase || isStorage ? 'text-xs text-gray-200' : 'text-sm'}`}>{pane.name}</div>
+                  {connection && !isDatabase && !isStorage && (
                     <div className="text-xs text-muted-foreground truncate">
                       {connection.username}@{connection.host}
                     </div>
                   )}
-                  {session?.sessionId && !isDatabase && (
+                  {storageConnection && isStorage && (
+                    <div className="text-xs text-muted-foreground truncate">
+                      {storageConnection.name}
+                    </div>
+                  )}
+                  {session?.sessionId && !isDatabase && !isStorage && (
                     <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Connected" />
                   )}
                   {isDatabase && (
                     <div className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 flex-shrink-0">DB</div>
+                  )}
+                  {isStorage && (
+                    <div className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0">STORAGE</div>
                   )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => closePane(pane.id)}
-                  className={`p-0 flex-shrink-0 ${isDatabase ? 'h-5 w-5 text-gray-400 hover:text-white' : 'h-6 w-6'}`}
+                  className={`p-0 flex-shrink-0 ${isDatabase || isStorage ? 'h-5 w-5 text-gray-400 hover:text-white' : 'h-6 w-6'}`}
                 >
-                  <X className={isDatabase ? 'h-3 w-3' : 'h-4 w-4'} />
+                  <X className={isDatabase || isStorage ? 'h-3 w-3' : 'h-4 w-4'} />
                 </Button>
               </div>
 
-              {/* Terminal or DB Content */}
+              {/* Content: Terminal, DB, or Storage */}
               {isDatabase ? (
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <DatabaseManager
                     connectionIdOverride={connection?.id}
                     embedded
                     onClose={() => closePane(pane.id)}
+                  />
+                </div>
+              ) : isStorage ? (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <Storage
+                    storageConnectionIdOverride={pane.storageConnectionId || undefined}
+                    embedded
                   />
                 </div>
               ) : (

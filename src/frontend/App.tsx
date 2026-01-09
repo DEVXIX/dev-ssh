@@ -10,6 +10,7 @@ import ServerDetails from './pages/ServerDetails';
 import Workspaces from './pages/Workspaces';
 import WorkspaceLauncher from './pages/WorkspaceLauncher';
 import DatabaseManager from './pages/DatabaseManager';
+import Storage from './pages/Storage';
 import Layout from './components/Layout';
 import { Toaster } from 'sonner';
 
@@ -27,6 +28,7 @@ function App() {
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="connections" element={<Connections />} />
+              <Route path="storage" element={<Storage />} />
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspace/:workspaceId" element={<WorkspaceLauncher />} />
               <Route path="terminal/:connectionId" element={<Terminal />} />

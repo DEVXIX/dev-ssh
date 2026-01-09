@@ -171,10 +171,12 @@ export type WorkspaceLayoutType =
 
 export interface WorkspacePane {
   id: string;
-  connectionId: number | null;  // Which server to connect to
-  name: string;                  // Pane title
-  commands?: string[];           // Auto-execute commands on connect
-  defaultPath?: string;          // Starting directory
+  connectionId: number | null;     // Which server to connect to
+  storageConnectionId: number | null;  // Which storage to connect to
+  paneType: 'terminal' | 'database' | 'storage';  // Type of pane
+  name: string;                     // Pane title
+  commands?: string[];              // Auto-execute commands on connect
+  defaultPath?: string;             // Starting directory
 }
 
 export interface Workspace {
@@ -232,4 +234,57 @@ export interface DatabaseSession {
   currentDatabase?: string;
   connected: boolean;
   lastActive: number;
+}
+
+// Storage-specific types (MinIO, S3, etc.)
+export type StorageType = 'minio' | 's3' | 'azure' | 'gcs';
+
+export interface StorageConnection {
+  id: number;
+  userId: number;
+  name: string;
+  type: StorageType;
+  endpoint: string;
+  port?: number;
+  accessKey: string;
+  secretKey: string;
+  region?: string;
+  useSsl: boolean;
+  bucket?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StorageObject {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  size: number;
+  lastModified: Date;
+  etag?: string;
+  contentType?: string;
+  isPrefix?: boolean;
+}
+
+export interface StorageBucket {
+  name: string;
+  creationDate: Date;
+  region?: string;
+}
+
+export interface StorageSession {
+  sessionId: string;
+  storageConnectionId: number;
+  storageType: StorageType;
+  currentBucket?: string;
+  currentPath?: string;
+  connected: boolean;
+  lastActive: number;
+}
+
+export interface UploadProgress {
+  fileName: string;
+  loaded: number;
+  total: number;
+  percentage: number;
 }

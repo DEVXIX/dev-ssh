@@ -13,6 +13,7 @@ import tunnelRoutes from './routes/tunnels.js';
 import statsRoutes from './routes/stats.js';
 import workspaceRoutes from './routes/workspaces.js';
 import databaseRoutes from './routes/database.js';
+import storageRoutes from './routes/storage.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
@@ -65,7 +66,8 @@ app.use('/api/files', authenticateToken, rateLimiter.apiLimiter(500), fileRoutes
 app.use('/api/tunnels', authenticateToken, rateLimiter.apiLimiter(300), tunnelRoutes);
 app.use('/api/stats', authenticateToken, rateLimiter.apiLimiter(500), statsRoutes);
 app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(300), workspaceRoutes);
-app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(1000), databaseRoutes);
+app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(7777), databaseRoutes);
+app.use('/api/storage', authenticateToken, rateLimiter.apiLimiter(500), storageRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {

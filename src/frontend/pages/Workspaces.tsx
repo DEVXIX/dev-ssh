@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { workspacesAPI, connectionsAPI } from '../services/api';
-import type { Workspace, WorkspacePane, WorkspaceLayoutType, Connection } from '../../types';
+import { workspacesAPI, connectionsAPI, storageAPI } from '../services/api';
+import type { Workspace, WorkspacePane, WorkspaceLayoutType, Connection, StorageConnection } from '../../types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -28,6 +28,7 @@ export default function Workspaces() {
   const navigate = useNavigate();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [storageConnections, setStorageConnections] = useState<StorageConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
@@ -49,6 +50,7 @@ export default function Workspaces() {
   useEffect(() => {
     loadWorkspaces();
     loadConnections();
+    loadStorageConnections();
   }, []);
 
   const loadWorkspaces = async () => {
@@ -76,6 +78,17 @@ export default function Workspaces() {
     }
   };
 
+  const loadStorageConnections = async () => {
+    try {
+      const response = await storageAPI.getAllConnections();
+      if (response.data.success) {
+        setStorageConnections(response.data.data);
+      }
+    } catch (error) {
+      console.error('Failed to load storage connections:', error);
+    }
+  };
+
   const getLayoutPaneCount = (layout: WorkspaceLayoutType): number => {
     switch (layout) {
       case 'single': return 1;
@@ -93,6 +106,8 @@ export default function Workspaces() {
     return Array.from({ length: count }, (_, i) => ({
       id: `pane_${Date.now()}_${i}`,
       connectionId: null,
+      storageConnectionId: null,
+      paneType: 'terminal' as const,
       name: `Pane ${i + 1}`,
       commands: [],
       defaultPath: '/',
@@ -316,24 +331,68 @@ export default function Workspaces() {
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Server Connection</Label>
+                              <Label className="text-xs">Pane Type</Label>
                               <Select
-                                value={pane.connectionId?.toString() || 'none'}
-                                onValueChange={(val) => updatePane(pane.id, { connectionId: val === 'none' ? null : parseInt(val) })}
+                                value={pane.paneType || 'terminal'}
+                                onValueChange={(val: 'terminal' | 'database' | 'storage') => {
+                                  updatePane(pane.id, {
+                                    paneType: val,
+                                    connectionId: null,
+                                    storageConnectionId: null
+                                  });
+                                }}
                               >
                                 <SelectTrigger className="h-8 text-sm">
-                                  <SelectValue placeholder="Select server..." />
+                                  <SelectValue placeholder="Select type..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="none">No connection</SelectItem>
-                                  {connections.map(conn => (
-                                    <SelectItem key={conn.id} value={conn.id.toString()}>
-                                      {conn.name} ({conn.host})
-                                    </SelectItem>
-                                  ))}
+                                  <SelectItem value="terminal">Terminal</SelectItem>
+                                  <SelectItem value="database">Database</SelectItem>
+                                  <SelectItem value="storage">Storage</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
+                            {pane.paneType === 'storage' ? (
+                              <div className="space-y-2">
+                                <Label className="text-xs">Storage Connection</Label>
+                                <Select
+                                  value={pane.storageConnectionId?.toString() || 'none'}
+                                  onValueChange={(val) => updatePane(pane.id, { storageConnectionId: val === 'none' ? null : parseInt(val) })}
+                                >
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="Select storage..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No storage</SelectItem>
+                                    {storageConnections.map(conn => (
+                                      <SelectItem key={conn.id} value={conn.id.toString()}>
+                                        {conn.name} ({conn.endpoint})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <Label className="text-xs">Server Connection</Label>
+                                <Select
+                                  value={pane.connectionId?.toString() || 'none'}
+                                  onValueChange={(val) => updatePane(pane.id, { connectionId: val === 'none' ? null : parseInt(val) })}
+                                >
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="Select server..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No connection</SelectItem>
+                                    {connections.map(conn => (
+                                      <SelectItem key={conn.id} value={conn.id.toString()}>
+                                        {conn.name} ({conn.host})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                             <div className="space-y-2">
                               <Label className="text-xs">Auto Commands (one per line)</Label>
                               <textarea
@@ -412,11 +471,13 @@ export default function Workspaces() {
                   <div className="flex flex-col gap-1">
                     {workspace.panes.slice(0, 3).map((pane, index) => {
                       const conn = connections.find(c => c.id === pane.connectionId);
+                      const storageConn = storageConnections.find(c => c.id === pane.storageConnectionId);
+                      const displayConn = pane.paneType === 'storage' ? storageConn : conn;
                       return (
                         <div key={pane.id} className="text-xs px-2 py-1 bg-muted rounded flex items-center justify-between">
-                          <span className="font-medium">{pane.name}</span>
-                          {conn && (
-                            <span className="text-muted-foreground">→ {conn.name}</span>
+                          <span className="font-medium">{pane.name} <span className="text-muted-foreground">({pane.paneType})</span></span>
+                          {displayConn && (
+                            <span className="text-muted-foreground">→ {displayConn.name}</span>
                           )}
                         </div>
                       );

@@ -130,3 +130,74 @@ export const databaseAPI = {
   getTableDependencies: (sessionId: string, database?: string) =>
     api.get(`/database/dependencies/${sessionId}`, { params: { database } }),
 };
+
+// Storage API (MinIO, S3, etc.)
+export const storageAPI = {
+  // Storage connections management
+  getAllConnections: () => api.get('/storage/connections'),
+  getConnection: (id: number) => api.get(`/storage/connections/${id}`),
+  createConnection: (data: any) => api.post('/storage/connections', data),
+  updateConnection: (id: number, data: any) => api.put(`/storage/connections/${id}`, data),
+  deleteConnection: (id: number) => api.delete(`/storage/connections/${id}`),
+
+  // Session management
+  connect: (storageConnectionId: number) =>
+    api.post('/storage/connect', { storageConnectionId }),
+  disconnect: (sessionId: string) =>
+    api.post(`/storage/disconnect/${sessionId}`),
+  getSessionInfo: (sessionId: string) =>
+    api.get(`/storage/session/${sessionId}`),
+
+  // Bucket operations
+  listBuckets: (sessionId: string) =>
+    api.get(`/storage/buckets/${sessionId}`),
+  createBucket: (sessionId: string, bucketName: string, region?: string) =>
+    api.post(`/storage/buckets/${sessionId}`, { bucketName, region }),
+  deleteBucket: (sessionId: string, bucketName: string) =>
+    api.delete(`/storage/buckets/${sessionId}/${bucketName}`),
+
+  // Folder operations
+  createFolder: (sessionId: string, bucketName: string, folderName: string) =>
+    api.post(`/storage/folders/${sessionId}/${bucketName}`, { folderName }),
+  deleteFolder: (sessionId: string, bucketName: string, folderPath: string) =>
+    api.delete(`/storage/folders/${sessionId}/${bucketName}/${folderPath}`),
+
+  // Object operations
+  listObjects: (sessionId: string, bucketName: string, prefix?: string, recursive?: boolean) =>
+    api.get(`/storage/objects/${sessionId}/${bucketName}`, {
+      params: { prefix: prefix || '', recursive: recursive || false }
+    }),
+  uploadObject: (sessionId: string, bucketName: string, objectName: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('objectName', objectName);
+
+    return api.post(`/storage/objects/${sessionId}/${bucketName}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  downloadObject: (sessionId: string, bucketName: string, objectName: string) =>
+    api.get(`/storage/objects/${sessionId}/${bucketName}/${objectName}`, {
+      params: { download: 'true' },
+      responseType: 'blob',
+    }),
+  deleteObject: (sessionId: string, bucketName: string, objectName: string) =>
+    api.delete(`/storage/objects/${sessionId}/${bucketName}/${objectName}`),
+  deleteObjects: (sessionId: string, bucketName: string, objectNames: string[]) =>
+    api.post(`/storage/objects/${sessionId}/${bucketName}/delete-batch`, { objectNames }),
+  copyObject: (sessionId: string, sourceBucket: string, sourceObject: string, destBucket: string, destObject: string) =>
+    api.post(`/storage/objects/${sessionId}/copy`, {
+      sourceBucket,
+      sourceObject,
+      destBucket,
+      destObject,
+    }),
+  getObjectInfo: (sessionId: string, bucketName: string, objectName: string) =>
+    api.get(`/storage/info/${sessionId}/${bucketName}/${objectName}`),
+  getPresignedUrl: (sessionId: string, bucketName: string, objectName: string, expiry?: number) =>
+    api.get(`/storage/presigned-url/${sessionId}/${bucketName}/${objectName}`, {
+      params: { expiry: expiry || 3600 }
+    }),
+};

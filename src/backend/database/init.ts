@@ -165,6 +165,26 @@ export function initDatabase() {
     )
   `);
 
+  // Create storage_connections table (MinIO and other object storage)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS storage_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('minio', 's3', 'azure', 'gcs')),
+      endpoint TEXT NOT NULL,
+      port INTEGER,
+      access_key TEXT NOT NULL,
+      secret_key TEXT NOT NULL,
+      region TEXT,
+      use_ssl INTEGER DEFAULT 1,
+      bucket TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create index for faster queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_server_stats_session
