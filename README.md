@@ -1,12 +1,14 @@
-# SSH/FTP Manager/ Database Manager
+# SSH/FTP Manager/ Database Manager / Storage Server Manager
 
-idk what to call this but its a web-based server manager with ssh and file manager, database view/manage/export capabilities similar to termix. but it's a very old project i've worked on, the main purpose of it is to be self hosted.
+![Workspace Manager](https://i.imgur.com/KbqXrFl.png)
 
-
+idk what to call this but its a web-based server manager with ssh and file manager, database view/manage/export capabilities similar to termix. but it's a very old project i've worked on, the main purpose of it is to be self hosted, added s3 server storage support
 ## Database Manager
 
 Right click to view context menu, on tables or database.
 
+
+## Storage Server Manager - Only tested with MiniO
 
 ## Installation
 
