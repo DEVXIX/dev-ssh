@@ -370,25 +370,15 @@ export default function Storage({ storageConnectionIdOverride, embedded = false 
     } catch (error: any) {
       // Check if session expired (404 or 500 with "Session not found" message)
       if (error.response?.status === 500 && error.response?.data?.error?.includes('Session not found')) {
-        console.log('[STORAGE] Session expired, attempting reconnection...');
-        toast.info('Session expired, reconnecting...');
+        console.log('[STORAGE] Session expired');
+        toast.error('Session expired. Please reconnect.');
 
-        // Try to reconnect automatically
-        if (selectedConnection) {
-          try {
-            const response = await storageAPI.connect(selectedConnection.id);
-            const newSessionId = response.data.sessionId;
-            setSessionId(newSessionId);
-
-            // Retry loading objects with new session
-            await loadObjects(bucketName, prefix);
-            toast.success('Reconnected successfully');
-            return;
-          } catch (reconnectError) {
-            console.error('[STORAGE] Reconnection failed:', reconnectError);
-            toast.error('Session expired. Please reconnect manually.');
-          }
-        }
+        // Clear session state
+        setSessionId(null);
+        setBuckets([]);
+        setCurrentBucket(null);
+        setObjects([]);
+        setCurrentPath('');
       } else {
         toast.error('Failed to load objects');
       }
