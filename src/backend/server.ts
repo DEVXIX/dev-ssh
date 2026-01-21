@@ -14,9 +14,11 @@ import statsRoutes from './routes/stats.js';
 import workspaceRoutes from './routes/workspaces.js';
 import databaseRoutes from './routes/database.js';
 import storageRoutes from './routes/storage.js';
+import rdpRoutes from './routes/rdp.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
+import { handleRDPGuacWebSocket } from './websocket/rdp-guac.js';
 import { authenticateToken } from './middleware/auth.js';
 import { securityHeaders, errorHandler } from './middleware/security.js';
 import rateLimiter from './middleware/rateLimiter.js';
@@ -68,6 +70,7 @@ app.use('/api/stats', authenticateToken, rateLimiter.apiLimiter(500), statsRoute
 app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(300), workspaceRoutes);
 app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(7777), databaseRoutes);
 app.use('/api/storage', authenticateToken, rateLimiter.apiLimiter(500), storageRoutes);
+app.use('/api/rdp', authenticateToken, rateLimiter.apiLimiter(300), rdpRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {
@@ -86,16 +89,26 @@ app.use(errorHandler);
 const server = createServer(app);
 
 // Single WebSocket server for both terminal and stats
-const wss = new WebSocketServer({ 
+const wss = new WebSocketServer({
   server,
-  clientTracking: true
+  clientTracking: true,
+  // Handle WebSocket subprotocol for Guacamole
+  handleProtocols: (protocols, req) => {
+    // If 'guacamole' protocol is requested (by guacamole-common-js), accept it
+    if (protocols.has('guacamole')) {
+      return 'guacamole';
+    }
+    // For other WebSocket connections (terminal, stats), accept without subprotocol
+    return false;
+  }
 });
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const pathname = url.pathname;
-  
-  console.log(`WebSocket connection to path: ${pathname}`);
+  const protocol = ws.protocol;
+
+  console.log(`WebSocket connection to path: ${pathname}, protocol: ${protocol || 'none'}`);
   
   if (pathname === '/ws/terminal') {
     console.log('Routing to terminal WebSocket handler');
@@ -103,6 +116,9 @@ wss.on('connection', (ws, req) => {
   } else if (pathname === '/ws/stats') {
     console.log('Routing to stats WebSocket handler');
     handleStatsWebSocket(ws, req);
+  } else if (pathname === '/ws/rdp') {
+    console.log('Routing to RDP WebSocket handler (Guacamole)');
+    handleRDPGuacWebSocket(ws, req);
   } else {
     console.log(`Unknown WebSocket path: ${pathname}, closing connection`);
     ws.close(1008, 'Unknown path');
@@ -117,6 +133,7 @@ server.listen(PORT, () => {
   console.log(`[SERVER] Running on http://localhost:${PORT}`);
   console.log(`[WEBSOCKET] Terminal WebSocket ready on ws://localhost:${PORT}/ws/terminal`);
   console.log(`[WEBSOCKET] Stats WebSocket ready on ws://localhost:${PORT}/ws/stats`);
+  console.log(`[WEBSOCKET] RDP WebSocket ready on ws://localhost:${PORT}/ws/rdp`);
 });
 
 export default app;

@@ -8,7 +8,7 @@ import { Label } from '@/frontend/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/frontend/components/ui/select';
 import { Card } from '@/frontend/components/ui/card';
 import { Checkbox } from '@/frontend/components/ui/checkbox';
-import { Server, Terminal, FolderOpen, Cable, Edit2, Trash2, Plus, Search, X, Activity, Info } from 'lucide-react';
+import { Server, Terminal, FolderOpen, Cable, Edit2, Trash2, Plus, Search, X, Activity, Info, Monitor } from 'lucide-react';
 
 export default function Connections() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export default function Connections() {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    type: 'ssh' as 'ssh' | 'ftp' | 'database',
+    type: 'ssh' as 'ssh' | 'ftp' | 'database' | 'rdp',
     host: '',
     port: 22,
     username: '',
@@ -39,6 +39,15 @@ export default function Connections() {
     databaseType: 'mysql' as 'mysql' | 'postgresql' | 'sqlite' | 'mariadb' | 'mssql' | 'oracle',
     database: '',
     ssl: false,
+    // RDP-specific fields
+    domain: '',
+    rdpSecurity: 'any' as 'any' | 'nla' | 'tls' | 'rdp',
+    rdpWidth: 1280,
+    rdpHeight: 720,
+    rdpColorDepth: 24 as 15 | 16 | 24 | 32,
+    rdpAudio: false,
+    rdpClipboard: true,
+    rdpDrives: false,
   });
 
   useEffect(() => {
@@ -99,6 +108,15 @@ export default function Connections() {
       databaseType: connection.databaseType || 'mysql',
       database: connection.database || '',
       ssl: connection.ssl || false,
+      // RDP fields
+      domain: connection.domain || '',
+      rdpSecurity: connection.rdpSecurity || 'any',
+      rdpWidth: connection.rdpWidth || 1280,
+      rdpHeight: connection.rdpHeight || 720,
+      rdpColorDepth: connection.rdpColorDepth || 24,
+      rdpAudio: connection.rdpAudio || false,
+      rdpClipboard: connection.rdpClipboard !== false,
+      rdpDrives: connection.rdpDrives || false,
     });
     setShowForm(true);
   };
@@ -136,16 +154,26 @@ export default function Connections() {
       databaseType: 'mysql',
       database: '',
       ssl: false,
+      // RDP fields
+      domain: '',
+      rdpSecurity: 'any',
+      rdpWidth: 1280,
+      rdpHeight: 720,
+      rdpColorDepth: 24,
+      rdpAudio: false,
+      rdpClipboard: true,
+      rdpDrives: false,
     });
     setEditingConnection(null);
     setError('');
   };
 
-  const handleTypeChange = (type: 'ssh' | 'ftp' | 'database') => {
+  const handleTypeChange = (type: 'ssh' | 'ftp' | 'database' | 'rdp') => {
     const defaultPorts = {
       ssh: 22,
       ftp: 21,
       database: 3306, // MySQL default
+      rdp: 3389,
     };
 
     setFormData({
@@ -154,7 +182,7 @@ export default function Connections() {
       port: defaultPorts[type],
       enableTerminal: type === 'ssh',
       enableTunneling: type === 'ssh',
-      enableFileManager: type !== 'database',
+      enableFileManager: type !== 'database' && type !== 'rdp',
     });
   };
 
@@ -285,7 +313,7 @@ export default function Connections() {
 
                       <div className="space-y-2">
                         <Label htmlFor="type">Connection Type</Label>
-                        <Select value={formData.type} onValueChange={(val) => handleTypeChange(val as 'ssh' | 'ftp' | 'database')}>
+                        <Select value={formData.type} onValueChange={(val) => handleTypeChange(val as 'ssh' | 'ftp' | 'database' | 'rdp')}>
                           <SelectTrigger id="type">
                             <SelectValue />
                           </SelectTrigger>
@@ -293,6 +321,7 @@ export default function Connections() {
                             <SelectItem value="ssh">SSH</SelectItem>
                             <SelectItem value="ftp">FTP</SelectItem>
                             <SelectItem value="database">Database</SelectItem>
+                            <SelectItem value="rdp">RDP (Remote Desktop)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -444,7 +473,106 @@ export default function Connections() {
                     </div>
                   )}
 
+                  {/* RDP-specific fields */}
+                  {formData.type === 'rdp' && (
+                    <div className="space-y-4 pt-4 border-t border-border">
+                      <h3 className="text-sm font-medium text-foreground">RDP Settings</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="domain">Domain (Optional)</Label>
+                          <Input
+                            id="domain"
+                            value={formData.domain}
+                            onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                            placeholder="WORKGROUP"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rdpSecurity">Security Protocol</Label>
+                          <Select value={formData.rdpSecurity} onValueChange={(val) => setFormData({ ...formData, rdpSecurity: val as any })}>
+                            <SelectTrigger id="rdpSecurity">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="any">Auto-detect</SelectItem>
+                              <SelectItem value="nla">NLA (Network Level Auth)</SelectItem>
+                              <SelectItem value="tls">TLS</SelectItem>
+                              <SelectItem value="rdp">RDP Security</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="rdpWidth">Width</Label>
+                          <Input
+                            id="rdpWidth"
+                            type="number"
+                            value={formData.rdpWidth}
+                            onChange={(e) => setFormData({ ...formData, rdpWidth: parseInt(e.target.value) || 1280 })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rdpHeight">Height</Label>
+                          <Input
+                            id="rdpHeight"
+                            type="number"
+                            value={formData.rdpHeight}
+                            onChange={(e) => setFormData({ ...formData, rdpHeight: parseInt(e.target.value) || 720 })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rdpColorDepth">Color Depth</Label>
+                          <Select value={formData.rdpColorDepth.toString()} onValueChange={(val) => setFormData({ ...formData, rdpColorDepth: parseInt(val) as any })}>
+                            <SelectTrigger id="rdpColorDepth">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="15">15-bit</SelectItem>
+                              <SelectItem value="16">16-bit</SelectItem>
+                              <SelectItem value="24">24-bit</SelectItem>
+                              <SelectItem value="32">32-bit</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="rdpClipboard"
+                            checked={formData.rdpClipboard}
+                            onCheckedChange={(checked) => setFormData({ ...formData, rdpClipboard: !!checked })}
+                          />
+                          <Label htmlFor="rdpClipboard" className="font-normal cursor-pointer">
+                            Enable Clipboard Sharing
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="rdpAudio"
+                            checked={formData.rdpAudio}
+                            onCheckedChange={(checked) => setFormData({ ...formData, rdpAudio: !!checked })}
+                          />
+                          <Label htmlFor="rdpAudio" className="font-normal cursor-pointer">
+                            Enable Audio Redirection
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="rdpDrives"
+                            checked={formData.rdpDrives}
+                            onCheckedChange={(checked) => setFormData({ ...formData, rdpDrives: !!checked })}
+                          />
+                          <Label htmlFor="rdpDrives" className="font-normal cursor-pointer">
+                            Enable Drive Redirection
+                          </Label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Features */}
+                  {formData.type !== 'rdp' && (
                   <div className="space-y-4 pt-4 border-t border-border">
                     <h3 className="text-sm font-medium text-foreground">Enabled Features</h3>
                     <div className="space-y-3">
@@ -484,6 +612,7 @@ export default function Connections() {
                       )}
                     </div>
                   </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="defaultPath">Default Path</Label>
@@ -557,11 +686,19 @@ export default function Connections() {
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`rounded-lg p-2.5 ${connection.type === 'ssh' ? 'bg-blue-500/10' : 'bg-green-500/10'}`}
+                        className={`rounded-lg p-2.5 ${
+                          connection.type === 'ssh' ? 'bg-blue-500/10' :
+                          connection.type === 'rdp' ? 'bg-purple-500/10' :
+                          'bg-green-500/10'
+                        }`}
                       >
-                        <Server
-                          className={`h-5 w-5 ${connection.type === 'ssh' ? 'text-blue-500' : 'text-green-500'}`}
-                        />
+                        {connection.type === 'rdp' ? (
+                          <Monitor className={`h-5 w-5 text-purple-500`} />
+                        ) : (
+                          <Server
+                            className={`h-5 w-5 ${connection.type === 'ssh' ? 'text-blue-500' : 'text-green-500'}`}
+                          />
+                        )}
                       </div>
                       <div>
                         <h3 className="font-semibold text-foreground">{connection.name}</h3>
@@ -572,7 +709,9 @@ export default function Connections() {
                     </div>
                     <span
                       className={`px-2.5 py-1 rounded-md text-xs font-medium ${
-                        connection.type === 'ssh' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'
+                        connection.type === 'ssh' ? 'bg-blue-500/10 text-blue-400' :
+                        connection.type === 'rdp' ? 'bg-purple-500/10 text-purple-400' :
+                        'bg-green-500/10 text-green-400'
                       }`}
                     >
                       {connection.type.toUpperCase()}
@@ -587,7 +726,13 @@ export default function Connections() {
                         Terminal
                       </span>
                     )}
-                    {enableFileManager && (
+                    {connection.type === 'rdp' && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted rounded text-xs text-muted-foreground">
+                        <Monitor className="h-3 w-3" />
+                        Remote Desktop
+                      </span>
+                    )}
+                    {enableFileManager && connection.type !== 'rdp' && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted rounded text-xs text-muted-foreground">
                         <FolderOpen className="h-3 w-3" />
                         Files
@@ -623,8 +768,18 @@ export default function Connections() {
                         Open Database
                       </Button>
                     )}
+                    {connection.type === 'rdp' && (
+                      <Button
+                        onClick={() => navigate(`/rdp/${connection.id}`)}
+                        className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+                        size="sm"
+                      >
+                        <Monitor className="h-3.5 w-3.5" />
+                        Open Remote Desktop
+                      </Button>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
-                      {enableFileManager && (
+                      {enableFileManager && connection.type !== 'rdp' && (
                         <Button
                           onClick={() => navigate(`/files/${connection.id}`)}
                           variant="outline"

@@ -8,7 +8,7 @@ export interface User {
   createdAt: string;
 }
 
-export type ConnectionType = 'ssh' | 'ftp' | 'database';
+export type ConnectionType = 'ssh' | 'ftp' | 'database' | 'rdp';
 export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'mariadb' | 'mssql' | 'oracle';
 
 export interface Connection {
@@ -43,6 +43,15 @@ export interface Connection {
     cert?: string;
     key?: string;
   };
+  // RDP-specific fields
+  domain?: string;               // Windows domain for authentication
+  rdpSecurity?: 'any' | 'nla' | 'tls' | 'rdp';  // Security protocol
+  rdpWidth?: number;             // Screen width (default 1280)
+  rdpHeight?: number;            // Screen height (default 720)
+  rdpColorDepth?: 15 | 16 | 24 | 32;  // Color depth
+  rdpAudio?: boolean;            // Enable audio redirection
+  rdpClipboard?: boolean;        // Enable clipboard sharing
+  rdpDrives?: boolean;           // Enable drive redirection
   createdAt: string;
   updatedAt: string;
 }
@@ -173,7 +182,7 @@ export interface WorkspacePane {
   id: string;
   connectionId: number | null;     // Which server to connect to
   storageConnectionId: number | null;  // Which storage to connect to
-  paneType: 'terminal' | 'database' | 'storage';  // Type of pane
+  paneType: 'terminal' | 'database' | 'storage' | 'rdp';  // Type of pane
   name: string;                     // Pane title
   commands?: string[];              // Auto-execute commands on connect
   defaultPath?: string;             // Starting directory

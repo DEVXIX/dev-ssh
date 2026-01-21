@@ -201,3 +201,13 @@ export const storageAPI = {
       params: { expiry: expiry || 3600 }
     }),
 };
+
+// RDP API
+export const rdpAPI = {
+  connect: (connectionId: number, password?: string) =>
+    api.post('/rdp/connect', { connectionId, password }),
+  disconnect: (sessionId: string) =>
+    api.post('/rdp/disconnect', { sessionId }),
+  status: (sessionId: string) =>
+    api.get(`/rdp/status/${sessionId}`),
+};

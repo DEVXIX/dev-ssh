@@ -11,6 +11,7 @@ import Workspaces from './pages/Workspaces';
 import WorkspaceLauncher from './pages/WorkspaceLauncher';
 import DatabaseManager from './pages/DatabaseManager';
 import Storage from './pages/Storage';
+import RDP from './pages/RDP';
 import Layout from './components/Layout';
 import { Toaster } from 'sonner';
 
@@ -33,6 +34,7 @@ function App() {
               <Route path="workspace/:workspaceId" element={<WorkspaceLauncher />} />
               <Route path="terminal/:connectionId" element={<Terminal />} />
               <Route path="database/:connectionId" element={<DatabaseManager />} />
+              <Route path="rdp/:connectionId" element={<RDP />} />
               <Route path="server/:sessionId" element={<ServerDetails />} />
               <Route path="files/:connectionId" element={<FileManager />} />
               <Route path="tunnels/:connectionId" element={<Tunnels />} />

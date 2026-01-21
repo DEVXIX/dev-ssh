@@ -162,6 +162,15 @@ router.post('/', (req, res) => {
       databaseType,
       database,
       ssl,
+      // RDP-specific fields
+      domain,
+      rdpSecurity,
+      rdpWidth,
+      rdpHeight,
+      rdpColorDepth,
+      rdpAudio,
+      rdpClipboard,
+      rdpDrives,
     } = req.body;
 
     if (!name || !type || !host || !username) {
@@ -177,12 +186,12 @@ router.post('/', (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid hostname or IP address' });
     }
 
-    const actualPort = port || (type === 'database' ? 3306 : type === 'ssh' ? 22 : 21);
+    const actualPort = port || (type === 'database' ? 3306 : type === 'ssh' ? 22 : type === 'rdp' ? 3389 : 21);
     if (!validatePort(actualPort)) {
       return res.status(400).json({ success: false, error: 'Invalid port number' });
     }
 
-    if (!['ssh', 'ftp', 'database'].includes(type)) {
+    if (!['ssh', 'ftp', 'database', 'rdp'].includes(type)) {
       return res.status(400).json({ success: false, error: 'Invalid connection type' });
     }
 
@@ -196,8 +205,10 @@ router.post('/', (req, res) => {
         user_id, name, type, host, port, username, auth_type,
         password, private_key, passphrase,
         enable_terminal, enable_file_manager, enable_tunneling,
-        default_path, tags, folder, database_type, database, ssl
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        default_path, tags, folder, database_type, database, ssl,
+        domain, rdp_security, rdp_width, rdp_height, rdp_color_depth,
+        rdp_audio, rdp_clipboard, rdp_drives
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       sanitizeInput(name),
@@ -217,7 +228,15 @@ router.post('/', (req, res) => {
       folder ? sanitizeInput(folder) : null,
       databaseType || null,
       database ? sanitizeInput(database) : null,
-      ssl ? 1 : 0
+      ssl ? 1 : 0,
+      domain ? sanitizeInput(domain) : null,
+      rdpSecurity || 'any',
+      rdpWidth || 1280,
+      rdpHeight || 720,
+      rdpColorDepth || 24,
+      rdpAudio ? 1 : 0,
+      rdpClipboard ? 1 : 0,
+      rdpDrives ? 1 : 0
     );
 
     const connection = db.prepare('SELECT * FROM connections WHERE id = ?').get(result.lastInsertRowid) as any;

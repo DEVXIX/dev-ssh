@@ -20,6 +20,11 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - REQUIRE_HTTPS=${REQUIRE_HTTPS:-false}
+      # Guacd connection for RDP/VNC
+      - GUACD_HOST=guacd
+      - GUACD_PORT=4822
+    depends_on:
+      - guacd
     volumes:
       # Persist database data
       - ./data:/app/data
@@ -78,6 +83,23 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
+
+  # Guacamole daemon for RDP/VNC connections with full NLA support
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: dev-ssh-guacd
+    restart: unless-stopped
+    networks:
+      - dev-ssh-network
+    # Expose guacd port to the app service
+    expose:
+      - "4822"
+    # Optional: mount for drive redirection
+    volumes:
+      - ./guacd-drive:/drive:rw
+      - ./guacd-record:/record:rw
+    environment:
+      - GUACD_LOG_LEVEL=info
 
 networks:
   dev-ssh-network:
