@@ -86,6 +86,46 @@ export function initDatabase() {
     )
   `);
 
+  // Create scheduled_tasks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      connection_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      command TEXT NOT NULL,
+      schedule TEXT NOT NULL,
+      timezone TEXT DEFAULT 'UTC',
+      enabled INTEGER DEFAULT 1,
+      last_run TEXT,
+      next_run TEXT,
+      last_status TEXT,
+      last_output TEXT,
+      last_error TEXT,
+      run_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Create task_logs table for execution history
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS task_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('success', 'error', 'running')),
+      output TEXT,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      duration_ms INTEGER,
+      FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create tunnels table
   db.exec(`
     CREATE TABLE IF NOT EXISTS tunnels (

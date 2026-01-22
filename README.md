@@ -11,6 +11,7 @@ A web-based server manager with SSH terminal, file manager, database view/manage
 - **Database Manager** - View, manage, export databases (MySQL, PostgreSQL, SQLite, etc.)
 - **Storage Manager** - S3-compatible storage (tested with MinIO)
 - **RDP Client** - Remote desktop connections with NLA support (1920x1080)
+- **Scheduled Tasks** - Cron jobs and automated script execution via SSH
 
 ## RDP Support
 
@@ -29,6 +30,26 @@ RDP connections use Apache Guacamole's guacd daemon for full NLA (Network Level 
 - guacd container handles RDP protocol via FreeRDP (supports NLA)
 - Backend connects to guacd on port 4822
 - Frontend uses Guacamole protocol for display
+
+## Scheduled Tasks (Cron Jobs)
+
+Automate command execution on your servers with cron-based scheduling.
+
+**Features:**
+- Schedule any command or script using cron expressions
+- Presets for common schedules (hourly, daily, weekly, monthly)
+- Automatic SSH connection and execution
+- Execution logs with output/error capture
+- Manual "Run now" button for testing
+- Enable/disable tasks
+- Timezone support
+- Run count tracking
+
+**Example use cases:**
+- Daily database backups: `pg_dump mydb > /backups/$(date +%Y%m%d).sql`
+- Restart services: `systemctl restart nginx`
+- Run cleanup scripts: `python3 /scripts/cleanup.py`
+- System updates: `apt update && apt upgrade -y`
 
 ## Database Manager
 

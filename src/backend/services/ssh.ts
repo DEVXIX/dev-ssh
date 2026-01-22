@@ -116,6 +116,117 @@ export function closeSSHConnection(sessionId: string): void {
   }
 }
 
+/**
+ * Execute a command on an SSH connection
+ * Used by scheduled tasks to run commands automatically
+ */
+export async function executeSSHCommand(
+  connectionId: number,
+  userId: number,
+  command: string
+): Promise<{ success: boolean; output?: string; error?: string }> {
+  const { getDatabase } = await import('../database/init.js');
+  const { decrypt, isEncrypted } = await import('../utils/encryption.js');
+  const db = getDatabase();
+
+  // Get connection details
+  const connection = db.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ? AND type = ?')
+    .get(connectionId, userId, 'ssh') as any;
+
+  if (!connection) {
+    throw new Error('SSH connection not found');
+  }
+
+  // Create a temporary session for command execution
+  const sessionId = generateSessionId();
+
+  try {
+    // Decrypt password if needed
+    const password = connection.password && isEncrypted(connection.password)
+      ? decrypt(connection.password)
+      : connection.password;
+
+    // Decrypt private key if needed
+    const privateKey = connection.private_key && isEncrypted(connection.private_key)
+      ? decrypt(connection.private_key)
+      : connection.private_key;
+
+    // Decrypt passphrase if needed
+    const passphrase = connection.passphrase && isEncrypted(connection.passphrase)
+      ? decrypt(connection.passphrase)
+      : connection.passphrase;
+
+    // Create SSH connection
+    const result = await createSSHConnection(sessionId, {
+      connectionId,
+      userId,
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      password,
+      privateKey,
+      passphrase,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to connect');
+    }
+
+    // Execute command
+    const session = getSSHSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found after connection');
+    }
+
+    return new Promise((resolve, reject) => {
+      session.client.exec(command, (err, stream) => {
+        if (err) {
+          closeSSHConnection(sessionId);
+          return reject(err);
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        stream.on('close', (code: number) => {
+          closeSSHConnection(sessionId);
+
+          if (code === 0) {
+            resolve({
+              success: true,
+              output: stdout || stderr || 'Command executed successfully',
+            });
+          } else {
+            resolve({
+              success: false,
+              error: stderr || stdout || `Command exited with code ${code}`,
+            });
+          }
+        });
+
+        stream.on('error', (err: Error) => {
+          closeSSHConnection(sessionId);
+          reject(err);
+        });
+      });
+    });
+  } catch (error: any) {
+    // Clean up session if it exists
+    if (sessions.has(sessionId)) {
+      closeSSHConnection(sessionId);
+    }
+    throw error;
+  }
+}
+
 export async function executeSFTPCommand(
   sessionId: string,
   operation: 'list' | 'readFile' | 'writeFile' | 'delete' | 'rename' | 'mkdir',

@@ -15,6 +15,7 @@ import workspaceRoutes from './routes/workspaces.js';
 import databaseRoutes from './routes/database.js';
 import storageRoutes from './routes/storage.js';
 import rdpRoutes from './routes/rdp.js';
+import tasksRoutes from './routes/tasks.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
@@ -22,6 +23,7 @@ import { handleRDPGuacWebSocket } from './websocket/rdp-guac.js';
 import { authenticateToken } from './middleware/auth.js';
 import { securityHeaders, errorHandler } from './middleware/security.js';
 import rateLimiter from './middleware/rateLimiter.js';
+import { initTaskScheduler, stopAllTasks } from './services/taskScheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -71,6 +73,7 @@ app.use('/api/workspaces', authenticateToken, rateLimiter.apiLimiter(300), works
 app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(7777), databaseRoutes);
 app.use('/api/storage', authenticateToken, rateLimiter.apiLimiter(500), storageRoutes);
 app.use('/api/rdp', authenticateToken, rateLimiter.apiLimiter(300), rdpRoutes);
+app.use('/api/tasks', authenticateToken, rateLimiter.apiLimiter(300), tasksRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {
@@ -134,6 +137,28 @@ server.listen(PORT, () => {
   console.log(`[WEBSOCKET] Terminal WebSocket ready on ws://localhost:${PORT}/ws/terminal`);
   console.log(`[WEBSOCKET] Stats WebSocket ready on ws://localhost:${PORT}/ws/stats`);
   console.log(`[WEBSOCKET] RDP WebSocket ready on ws://localhost:${PORT}/ws/rdp`);
+
+  // Initialize task scheduler after server is ready
+  initTaskScheduler();
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[SERVER] SIGTERM signal received, shutting down gracefully...');
+  stopAllTasks();
+  server.close(() => {
+    console.log('[SERVER] HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('[SERVER] SIGINT signal received, shutting down gracefully...');
+  stopAllTasks();
+  server.close(() => {
+    console.log('[SERVER] HTTP server closed');
+    process.exit(0);
+  });
 });
 
 export default app;

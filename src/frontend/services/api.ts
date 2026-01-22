@@ -211,3 +211,36 @@ export const rdpAPI = {
   status: (sessionId: string) =>
     api.get(`/rdp/status/${sessionId}`),
 };
+
+// Tasks/Scheduled Jobs API
+export const tasksAPI = {
+  getAll: (connectionId?: number) =>
+    api.get('/tasks', { params: { connectionId } }),
+  getOne: (id: number) =>
+    api.get(`/tasks/${id}`),
+  create: (data: {
+    connectionId: number;
+    name: string;
+    description?: string;
+    command: string;
+    schedule: string;
+    timezone?: string;
+    enabled?: boolean;
+  }) => api.post('/tasks', data),
+  update: (id: number, data: {
+    name?: string;
+    description?: string;
+    command?: string;
+    schedule?: string;
+    timezone?: string;
+    enabled?: boolean;
+  }) => api.put(`/tasks/${id}`, data),
+  delete: (id: number) =>
+    api.delete(`/tasks/${id}`),
+  execute: (id: number) =>
+    api.post(`/tasks/${id}/execute`),
+  getLogs: (id: number, limit?: number) =>
+    api.get(`/tasks/${id}/logs`, { params: { limit } }),
+  validateCron: (expression: string) =>
+    api.post('/tasks/validate-cron', { expression }),
+};

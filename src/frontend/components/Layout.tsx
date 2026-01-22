@@ -11,7 +11,8 @@ import {
   FolderOpen,
   Cable,
   LayoutGrid,
-  HardDrive
+  HardDrive,
+  Calendar
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -31,6 +32,7 @@ export default function Layout() {
     { name: 'Connections', path: '/connections', icon: Server },
     { name: 'Storage', path: '/storage', icon: HardDrive },
     { name: 'Workspaces', path: '/workspaces', icon: LayoutGrid },
+    { name: 'Tasks', path: '/tasks', icon: Calendar },
   ];
 
   const isActive = (path: string) => {
