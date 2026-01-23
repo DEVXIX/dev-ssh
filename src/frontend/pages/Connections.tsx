@@ -801,6 +801,17 @@ export default function Connections() {
                           Tunnels
                         </Button>
                       )}
+                      {connection.type === 'ssh' && (
+                        <Button
+                          onClick={() => navigate(`/processes/${connection.id}`)}
+                          variant="outline"
+                          className="gap-2"
+                          size="sm"
+                        >
+                          <Activity className="h-3.5 w-3.5" />
+                          Processes
+                        </Button>
+                      )}
                     </div>
                   </div>
 

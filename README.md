@@ -2,7 +2,7 @@
 
 ![Workspace Manager](https://i.imgur.com/KbqXrFl.png)
 
-A web-based server manager with SSH terminal, file manager, database view/manage/export capabilities, S3 storage support, and RDP remote desktop - all self-hosted.
+A web-based server manager with SSH terminal, file manager, database view/manage/export capabilities, S3 storage support, RDP remote desktop, and process monitoring - all self-hosted.
 
 ## Features
 
@@ -12,6 +12,7 @@ A web-based server manager with SSH terminal, file manager, database view/manage
 - **Storage Manager** - S3-compatible storage (tested with MinIO)
 - **RDP Client** - Remote desktop connections with NLA support (1920x1080)
 - **Scheduled Tasks** - Cron jobs and automated script execution via SSH
+- **Process Monitor** - Real-time process monitoring, CPU/memory stats, and process management
 
 ## RDP Support
 
@@ -50,6 +51,25 @@ Automate command execution on your servers with cron-based scheduling.
 - Restart services: `systemctl restart nginx`
 - Run cleanup scripts: `python3 /scripts/cleanup.py`
 - System updates: `apt update && apt upgrade -y`
+
+## Process Monitor
+
+Real-time process and system monitoring for your SSH servers.
+
+**Features:**
+- View running processes sorted by CPU usage
+- Real-time CPU and memory statistics
+- System uptime and load average
+- Search processes by name
+- Kill processes with customizable signals
+- Auto-refresh every 3 seconds
+- Color-coded resource usage indicators
+
+**Metrics displayed:**
+- CPU usage percentage and core count
+- Memory usage (total, used, free, percentage)
+- Per-process CPU and memory consumption
+- Process details (PID, user, status, runtime, command)
 
 ## Database Manager
 

@@ -94,6 +94,8 @@ export const statsAPI = {
   getLatestStats: (connectionId: number) => api.get(`/stats/connection/${connectionId}/latest`),
   fetchFreshStats: (connectionId: number, password?: string) =>
     api.post(`/stats/connection/${connectionId}/fetch`, { password }),
+  killProcess: (sessionId: string, pid: string, signal?: string) =>
+    api.post(`/stats/${sessionId}/kill-process`, { pid, signal }),
 };
 
 // Workspaces API
@@ -243,4 +245,16 @@ export const tasksAPI = {
     api.get(`/tasks/${id}/logs`, { params: { limit } }),
   validateCron: (expression: string) =>
     api.post('/tasks/validate-cron', { expression }),
+};
+
+// Process Monitor API
+export const processMonitorAPI = {
+  getProcesses: (connectionId: number) =>
+    api.get(`/process-monitor/${connectionId}/processes`),
+  getSystemStats: (connectionId: number) =>
+    api.get(`/process-monitor/${connectionId}/stats`),
+  killProcess: (connectionId: number, pid: string, signal?: string) =>
+    api.post(`/process-monitor/${connectionId}/kill`, { pid, signal }),
+  searchProcesses: (connectionId: number, query: string) =>
+    api.get(`/process-monitor/${connectionId}/search`, { params: { q: query } }),
 };

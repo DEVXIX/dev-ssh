@@ -137,6 +137,14 @@ export interface FTPConfig {
   };
 }
 
+export interface ProcessInfo {
+  pid: string;
+  user: string;
+  cpu: string;
+  mem: string;
+  command: string;
+}
+
 export interface ServerStats {
   cpu: {
     usage: number;
@@ -166,6 +174,7 @@ export interface ServerStats {
     ip: string;
     mac: string;
   }>;
+  processes?: ProcessInfo[];
   timestamp?: string;
 }
 

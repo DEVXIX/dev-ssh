@@ -13,6 +13,7 @@ import DatabaseManager from './pages/DatabaseManager';
 import Storage from './pages/Storage';
 import RDP from './pages/RDP';
 import ScheduledTasks from './pages/ScheduledTasks';
+import ProcessMonitor from './pages/ProcessMonitor';
 import Layout from './components/Layout';
 import { Toaster } from 'sonner';
 
@@ -40,6 +41,7 @@ function App() {
               <Route path="server/:sessionId" element={<ServerDetails />} />
               <Route path="files/:connectionId" element={<FileManager />} />
               <Route path="tunnels/:connectionId" element={<Tunnels />} />
+              <Route path="processes/:connectionId" element={<ProcessMonitor />} />
             </Route>
           ) : (
             <Route path="*" element={<Navigate to="/login" replace />} />

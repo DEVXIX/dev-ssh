@@ -15,6 +15,7 @@ import { ServerMetrics } from '../components/ServerMetrics';
 import { SystemInfo } from '../components/SystemInfo';
 import { NetworkInterfaces } from '../components/NetworkInterfaces';
 import { UptimeDisplay } from '../components/UptimeDisplay';
+import { ProcessList } from '../components/ProcessList';
 import { ServerStats } from '../../types';
 import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
 
@@ -970,6 +971,9 @@ function TerminalContent({ activeSessionId, onSessionChange }: { activeSessionId
                       </div>
                     </Card>
                   )}
+
+                  {/* Process List */}
+                  <ProcessList stats={stats} sessionId={activeSession?.sessionId} />
                 </>
               ) : (
                 <div className="flex items-center justify-center py-8">

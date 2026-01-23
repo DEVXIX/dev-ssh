@@ -11,6 +11,14 @@ const generateSessionId = () => {
   return `stats_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
+interface ProcessInfo {
+  pid: string;
+  user: string;
+  cpu: string;
+  mem: string;
+  command: string;
+}
+
 interface ServerStats {
   cpu: {
     usage: number;
@@ -40,6 +48,7 @@ interface ServerStats {
     ip: string;
     mac: string;
   }>;
+  processes: ProcessInfo[];
 }
 
 // Get current server stats (and save to DB)
@@ -76,6 +85,7 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
     os: "cat /etc/os-release | grep PRETTY_NAME | cut -d'\"' -f2",
     kernel: "uname -r",
     network: "ip -o addr show | awk '/inet / {print $2,$4}' | grep -v '127.0.0.1'",
+    processes: "ps aux --sort=-%cpu | head -21 | tail -20",
   };
 
   const results: any = {};
@@ -121,6 +131,24 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
       };
     });
 
+  // Parse Processes
+  const processLines = results.processes.trim().split('\n');
+  const processes = processLines
+    .filter((line: string) => line.trim())
+    .map((line: string): ProcessInfo | null => {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 11) return null;
+
+      return {
+        pid: parts[1] || '',
+        user: parts[0] || '',
+        cpu: parts[2] || '0.0',
+        mem: parts[3] || '0.0',
+        command: parts.slice(10).join(' ') || '',
+      };
+    })
+    .filter((p: ProcessInfo | null): p is ProcessInfo => p !== null);
+
   return {
     cpu: {
       usage: Math.round(cpuUsage),
@@ -146,6 +174,7 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
       kernel: results.kernel.trim() || 'unknown',
     },
     network,
+    processes,
   };
 }
 
@@ -293,6 +322,39 @@ router.get('/connection/:connectionId/latest', async (req, res) => {
   } catch (error: any) {
     console.error('Failed to fetch latest stats:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Kill a process for a session
+router.post('/:sessionId/kill-process', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { pid, signal = 'SIGTERM' } = req.body;
+
+    if (!pid) {
+      return res.status(400).json({ success: false, error: 'Process ID is required' });
+    }
+
+    const session = getSSHSession(sessionId);
+
+    if (!session || !session.isConnected) {
+      return res.status(404).json({ success: false, error: 'Session not found or not connected' });
+    }
+
+    // Validate signal
+    const validSignals = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP', 'SIGQUIT'];
+    if (!validSignals.includes(signal)) {
+      return res.status(400).json({ success: false, error: 'Invalid signal' });
+    }
+
+    // Execute kill command
+    const command = `kill -${signal.replace('SIG', '')} ${pid}`;
+    await executeCommand(session.client, command);
+
+    res.json({ success: true, message: 'Process terminated' });
+  } catch (error: any) {
+    console.error('Kill process error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to kill process' });
   }
 });
 

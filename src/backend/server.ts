@@ -16,6 +16,7 @@ import databaseRoutes from './routes/database.js';
 import storageRoutes from './routes/storage.js';
 import rdpRoutes from './routes/rdp.js';
 import tasksRoutes from './routes/tasks.js';
+import processMonitorRoutes from './routes/processMonitor.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
@@ -74,6 +75,7 @@ app.use('/api/database', authenticateToken, rateLimiter.apiLimiter(7777), databa
 app.use('/api/storage', authenticateToken, rateLimiter.apiLimiter(500), storageRoutes);
 app.use('/api/rdp', authenticateToken, rateLimiter.apiLimiter(300), rdpRoutes);
 app.use('/api/tasks', authenticateToken, rateLimiter.apiLimiter(300), tasksRoutes);
+app.use('/api/process-monitor', authenticateToken, rateLimiter.apiLimiter(500), processMonitorRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {

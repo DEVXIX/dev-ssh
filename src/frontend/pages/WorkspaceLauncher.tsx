@@ -10,7 +10,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card } from '../components/ui/card';
-import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen, Save } from 'lucide-react';
+import { ArrowLeft, X, Lock, Activity, FolderOpen, PanelRightClose, PanelRightOpen, Save, Monitor } from 'lucide-react';
 import { ServerStats } from '../../types';
 import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
 import { toast } from 'sonner';
@@ -903,14 +903,27 @@ export default function WorkspaceLauncher() {
                     <div className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0">STORAGE</div>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => closePane(pane.id)}
-                  className={`p-0 flex-shrink-0 ${isDatabase || isStorage ? 'h-5 w-5 text-gray-400 hover:text-white' : 'h-6 w-6'}`}
-                >
-                  <X className={isDatabase || isStorage ? 'h-3 w-3' : 'h-4 w-4'} />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {connection?.type === 'ssh' && !isDatabase && !isStorage && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(`/processes/${connection.id}`)}
+                      className="p-0 flex-shrink-0 h-6 w-6"
+                      title="Open Process Monitor"
+                    >
+                      <Monitor className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => closePane(pane.id)}
+                    className={`p-0 flex-shrink-0 ${isDatabase || isStorage ? 'h-5 w-5 text-gray-400 hover:text-white' : 'h-6 w-6'}`}
+                  >
+                    <X className={isDatabase || isStorage ? 'h-3 w-3' : 'h-4 w-4'} />
+                  </Button>
+                </div>
               </div>
 
               {/* Content: Terminal, DB, or Storage */}

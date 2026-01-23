@@ -6,6 +6,7 @@ import { ServerMetrics } from '../components/ServerMetrics';
 import { SystemInfo } from '../components/SystemInfo';
 import { NetworkInterfaces } from '../components/NetworkInterfaces';
 import { UptimeDisplay } from '../components/UptimeDisplay';
+import { ProcessList } from '../components/ProcessList';
 import { statsAPI, connectionsAPI } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { ServerStats } from '../../types';
@@ -380,6 +381,9 @@ export default function ServerDetails() {
 
             {/* Network Interfaces */}
             <NetworkInterfaces stats={stats} />
+
+            {/* Process List */}
+            <ProcessList stats={stats} sessionId={sessionId} onRefresh={handleRefresh} />
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-full">

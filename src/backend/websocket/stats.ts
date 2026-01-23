@@ -6,6 +6,14 @@ import { getSSHSession } from '../services/ssh.js';
 import { Client } from 'ssh2';
 import db from '../database/init.js';
 
+interface ProcessInfo {
+  pid: string;
+  user: string;
+  cpu: string;
+  mem: string;
+  command: string;
+}
+
 interface ServerStats {
   cpu: {
     usage: number;
@@ -35,6 +43,7 @@ interface ServerStats {
     ip: string;
     mac: string;
   }>;
+  processes: ProcessInfo[];
 }
 
 export function handleStatsWebSocket(ws: WebSocket, req: IncomingMessage) {
@@ -175,6 +184,7 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
     os: "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'",
     kernel: 'uname -r',
     network: "ip -o addr show | awk '/inet / {print $2,$4}' && ip -o link show | awk '{print $2,$17}'",
+    processes: "ps aux --sort=-%cpu | head -21 | tail -20",
   };
 
   const results: Record<string, string> = {};
@@ -238,6 +248,24 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
     }
   }
 
+  // Parse Processes
+  const processLines = results.processes.trim().split('\n');
+  const processes = processLines
+    .filter((line: string) => line.trim())
+    .map((line: string): ProcessInfo | null => {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 11) return null;
+
+      return {
+        pid: parts[1] || '',
+        user: parts[0] || '',
+        cpu: parts[2] || '0.0',
+        mem: parts[3] || '0.0',
+        command: parts.slice(10).join(' ') || '',
+      };
+    })
+    .filter((p: ProcessInfo | null): p is ProcessInfo => p !== null);
+
   return {
     cpu: {
       usage: Math.round(cpuUsage),
@@ -263,6 +291,7 @@ async function collectServerStats(client: Client): Promise<ServerStats> {
       kernel: results.kernel.trim() || 'unknown',
     },
     network,
+    processes,
   };
 }
 
