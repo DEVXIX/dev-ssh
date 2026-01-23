@@ -16,6 +16,7 @@ import { SystemInfo } from '../components/SystemInfo';
 import { NetworkInterfaces } from '../components/NetworkInterfaces';
 import { UptimeDisplay } from '../components/UptimeDisplay';
 import { ProcessList } from '../components/ProcessList';
+import { DockerContainers } from '../components/DockerContainers';
 import { ServerStats } from '../../types';
 import { FileManager, FileEditorProvider, useFileEditor } from '../components/file-manager/FileManager';
 
@@ -974,6 +975,9 @@ function TerminalContent({ activeSessionId, onSessionChange }: { activeSessionId
 
                   {/* Process List */}
                   <ProcessList stats={stats} sessionId={activeSession?.sessionId} />
+
+                  {/* Docker Containers */}
+                  <DockerContainers sessionId={activeSession?.sessionId} />
                 </>
               ) : (
                 <div className="flex items-center justify-center py-8">

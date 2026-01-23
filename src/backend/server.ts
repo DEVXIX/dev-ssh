@@ -17,6 +17,7 @@ import storageRoutes from './routes/storage.js';
 import rdpRoutes from './routes/rdp.js';
 import tasksRoutes from './routes/tasks.js';
 import processMonitorRoutes from './routes/processMonitor.js';
+import dockerRoutes from './routes/docker.js';
 import { initDatabase } from './database/init.js';
 import { handleTerminalWebSocket } from './websocket/terminal.js';
 import { handleStatsWebSocket } from './websocket/stats.js';
@@ -76,6 +77,7 @@ app.use('/api/storage', authenticateToken, rateLimiter.apiLimiter(500), storageR
 app.use('/api/rdp', authenticateToken, rateLimiter.apiLimiter(300), rdpRoutes);
 app.use('/api/tasks', authenticateToken, rateLimiter.apiLimiter(300), tasksRoutes);
 app.use('/api/process-monitor', authenticateToken, rateLimiter.apiLimiter(500), processMonitorRoutes);
+app.use('/api/docker', authenticateToken, rateLimiter.apiLimiter(500), dockerRoutes);
 
 // Health check (no authentication required)
 app.get('/api/health', (req, res) => {

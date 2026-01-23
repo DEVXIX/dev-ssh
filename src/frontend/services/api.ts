@@ -258,3 +258,38 @@ export const processMonitorAPI = {
   searchProcesses: (connectionId: number, query: string) =>
     api.get(`/process-monitor/${connectionId}/search`, { params: { q: query } }),
 };
+
+// Docker API
+export const dockerAPI = {
+  // Check if Docker is installed
+  checkInstalled: (sessionId: string) =>
+    api.get(`/docker/check/${sessionId}`),
+
+  // Container operations
+  listContainers: (sessionId: string, all = true) =>
+    api.get(`/docker/containers/${sessionId}`, { params: { all } }),
+  getContainerStats: (sessionId: string, containerId?: string) =>
+    api.get(`/docker/stats/${sessionId}`, { params: { containerId } }),
+  startContainer: (sessionId: string, containerId: string) =>
+    api.post(`/docker/containers/${sessionId}/${containerId}/start`),
+  stopContainer: (sessionId: string, containerId: string) =>
+    api.post(`/docker/containers/${sessionId}/${containerId}/stop`),
+  restartContainer: (sessionId: string, containerId: string) =>
+    api.post(`/docker/containers/${sessionId}/${containerId}/restart`),
+  removeContainer: (sessionId: string, containerId: string, force = false) =>
+    api.delete(`/docker/containers/${sessionId}/${containerId}`, { params: { force } }),
+  getContainerLogs: (sessionId: string, containerId: string, tail = 100) =>
+    api.get(`/docker/containers/${sessionId}/${containerId}/logs`, { params: { tail } }),
+  execInContainer: (sessionId: string, containerId: string, command: string) =>
+    api.post(`/docker/containers/${sessionId}/${containerId}/exec`, { command }),
+  inspectContainer: (sessionId: string, containerId: string) =>
+    api.get(`/docker/containers/${sessionId}/${containerId}/inspect`),
+
+  // Image operations
+  listImages: (sessionId: string) =>
+    api.get(`/docker/images/${sessionId}`),
+  pullImage: (sessionId: string, imageName: string) =>
+    api.post(`/docker/images/${sessionId}/pull`, { imageName }),
+  removeImage: (sessionId: string, imageId: string, force = false) =>
+    api.delete(`/docker/images/${sessionId}/${imageId}`, { params: { force } }),
+};

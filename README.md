@@ -13,6 +13,7 @@ A web-based server manager with SSH terminal, file manager, database view/manage
 - **RDP Client** - Remote desktop connections with NLA support (1920x1080)
 - **Scheduled Tasks** - Cron jobs and automated script execution via SSH
 - **Process Monitor** - Real-time process monitoring, CPU/memory stats, and process management
+- **Docker Manager** - Container management directly from Terminal sidebar
 
 ## RDP Support
 
@@ -70,6 +71,33 @@ Real-time process and system monitoring for your SSH servers.
 - Memory usage (total, used, free, percentage)
 - Per-process CPU and memory consumption
 - Process details (PID, user, status, runtime, command)
+
+## Docker Container Manager
+
+Manage Docker containers directly from the Terminal page sidebar.
+
+**Features:**
+- View all containers (running and stopped)
+- Real-time status indicators with color coding
+- Start, stop, restart, and remove containers
+- View container details (ID, image, ports, uptime)
+- Auto-refresh every 5 seconds
+- Minimal, compact UI matching the sidebar design
+- Automatic Docker installation detection
+
+**Container Information:**
+- Container name and image
+- Running state (green=running, gray=stopped, yellow=paused, blue=restarting)
+- Uptime for running containers
+- Port mappings
+- Container ID and creation date
+
+**Actions:**
+- Start stopped containers
+- Stop running containers
+- Restart containers
+- Remove stopped containers
+- Toggle detailed view for each container
 
 ## Database Manager
 
